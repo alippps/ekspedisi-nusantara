@@ -1,0 +1,709 @@
+-- HUD utama sesuai mockup: stamina + jam, zona, koin + level, tas, popup item, dan toast.
+-- Semua ukuran didesain di layar 1280x720, lalu diskalakan otomatis lewat UIScale.
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
+local UserInputService = game:GetService("UserInputService")
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local StaminaController = require(script.Parent.StaminaController)
+
+local player = Players.LocalPlayer
+
+local UIController = {}
+
+-- ===== Gaya =====
+local C = {
+	panel = Color3.fromRGB(18, 32, 26),
+	cream = Color3.fromRGB(246, 235, 211),
+	muted = Color3.fromRGB(207, 196, 172),
+	ink = Color3.fromRGB(36, 48, 42),
+	inkMuted = Color3.fromRGB(90, 101, 95),
+	card = Color3.fromRGB(255, 248, 234),
+	accent = Color3.fromRGB(232, 135, 58),
+	stamina = Color3.fromRGB(123, 200, 106),
+	tired = Color3.fromRGB(232, 96, 58),
+	gold = Color3.fromRGB(242, 181, 68),
+	empty = Color3.fromRGB(246, 235, 211),
+}
+
+-- Warna gelap untuk label rarity (teks putih tetap terbaca).
+local RARITY_DEEP = {
+	Common = Color3.fromRGB(95, 104, 100),
+	Uncommon = Color3.fromRGB(46, 125, 50),
+	Rare = Color3.fromRGB(44, 111, 184),
+	Epic = Color3.fromRGB(123, 63, 181),
+	Legendary = Color3.fromRGB(138, 97, 0),
+}
+
+local FONT_TITLE = Font.fromEnum(Enum.Font.FredokaOne)
+local FONT_BODY = Font.new(Font.fromEnum(Enum.Font.Nunito).Family, Enum.FontWeight.Bold)
+local FONT_BODY_HEAVY = Font.new(Font.fromEnum(Enum.Font.Nunito).Family, Enum.FontWeight.ExtraBold)
+
+local itemById = {}
+for _, item in Config.Items do
+	itemById[item.Id] = item
+end
+
+-- ===== Helper pembuat instance =====
+local function make(className: string, props: { [string]: any }, children: { Instance }?)
+	local inst = Instance.new(className)
+	local parent = props.Parent
+	for key, value in props do
+		if key ~= "Parent" then
+			(inst :: any)[key] = value
+		end
+	end
+	if children then
+		for _, child in children do
+			child.Parent = inst
+		end
+	end
+	if parent then
+		inst.Parent = parent
+	end
+	return inst
+end
+
+local function corner(radius: number)
+	return make("UICorner", { CornerRadius = UDim.new(0, radius) })
+end
+
+local function stroke(color: Color3, thickness: number, transparency: number)
+	return make("UIStroke", {
+		Color = color,
+		Thickness = thickness,
+		Transparency = transparency,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+	})
+end
+
+local function padding(vertical: number, horizontal: number)
+	return make("UIPadding", {
+		PaddingTop = UDim.new(0, vertical),
+		PaddingBottom = UDim.new(0, vertical),
+		PaddingLeft = UDim.new(0, horizontal),
+		PaddingRight = UDim.new(0, horizontal),
+	})
+end
+
+local function label(props: { [string]: any })
+	local defaults = {
+		BackgroundTransparency = 1,
+		FontFace = FONT_BODY,
+		TextColor3 = C.cream,
+		TextSize = 16,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Center,
+	}
+	for key, value in props do
+		defaults[key] = value
+	end
+	return make("TextLabel", defaults)
+end
+
+local function hudPanel(props: { [string]: any })
+	local defaults = {
+		BackgroundColor3 = C.panel,
+		BackgroundTransparency = 0.18,
+		BorderSizePixel = 0,
+	}
+	for key, value in props do
+		defaults[key] = value
+	end
+	return make("Frame", defaults, { corner(16), stroke(C.cream, 2, 0.82) })
+end
+
+local function bar(parent: Instance, height: number, color: Color3, order: number)
+	local track = make("Frame", {
+		Name = "Track",
+		BackgroundColor3 = C.cream,
+		BackgroundTransparency = 0.84,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, height),
+		LayoutOrder = order,
+		Parent = parent,
+	}, { corner(height // 2) })
+	local fill = make("Frame", {
+		Name = "Fill",
+		BackgroundColor3 = color,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Parent = track,
+	}, { corner(height // 2) })
+	return fill
+end
+
+local function formatNumber(n: number): string
+	local s = tostring(math.floor(n))
+	local formatted = s:reverse():gsub("(%d%d%d)", "%1."):reverse()
+	if formatted:sub(1, 1) == "." then
+		formatted = formatted:sub(2)
+	end
+	return formatted
+end
+
+local function tween(inst: Instance, seconds: number, goal: { [string]: any }, style: Enum.EasingStyle?, direction: Enum.EasingDirection?)
+	local t = TweenService:Create(inst, TweenInfo.new(seconds, style or Enum.EasingStyle.Quad, direction or Enum.EasingDirection.Out), goal)
+	t:Play()
+	return t
+end
+
+-- ===== Bangun HUD =====
+local gui: ScreenGui
+local staminaFill: Frame
+local staminaValue: TextLabel
+local timeLabel: TextLabel
+local coinLabel: TextLabel
+local levelLabel: TextLabel
+local xpFill: Frame
+local xpLabel: TextLabel
+local bagLabel: TextLabel
+local slotRow: Frame
+local slots: { Frame } = {}
+
+local popup: CanvasGroup
+local popupTitle: TextLabel
+local popupRarity: TextLabel
+local popupName: TextLabel
+local popupMeta: TextLabel
+local popupReward: TextLabel
+local popupStroke: UIStroke
+local popupToken = 0
+
+local toast: CanvasGroup
+local toastLabel: TextLabel
+local toastToken = 0
+
+local function buildStaminaPanel()
+	local panel = hudPanel({
+		Name = "StaminaPanel",
+		Position = UDim2.fromOffset(16, 16),
+		Size = UDim2.fromOffset(300, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Parent = gui,
+	})
+	padding(14, 16).Parent = panel
+	make("UIListLayout", { Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = panel })
+
+	local row = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 22), LayoutOrder = 1, Parent = panel })
+	label({ Text = "Stamina", FontFace = FONT_TITLE, TextSize = 19, Size = UDim2.fromScale(0.7, 1), Parent = row })
+	staminaValue = label({
+		Text = "100%",
+		FontFace = FONT_TITLE,
+		TextSize = 19,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Size = UDim2.fromScale(0.3, 1),
+		Position = UDim2.fromScale(0.7, 0),
+		Parent = row,
+	})
+
+	staminaFill = bar(panel, 12, C.stamina, 2)
+
+	timeLabel = label({
+		Text = "Siang · 08:00",
+		FontFace = FONT_BODY_HEAVY,
+		TextSize = 18,
+		Size = UDim2.new(1, 0, 0, 22),
+		LayoutOrder = 3,
+		Parent = panel,
+	})
+end
+
+local function buildZonePill()
+	local pill = make("Frame", {
+		Name = "ZonePill",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 16),
+		Size = UDim2.fromOffset(0, 44),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundColor3 = C.panel,
+		BackgroundTransparency = 0.18,
+		BorderSizePixel = 0,
+		Parent = gui,
+	}, { make("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(C.cream, 2, 0.82), padding(0, 22) })
+	label({
+		Text = "Zona 1 · Kaki Gunung",
+		FontFace = FONT_TITLE,
+		TextSize = 18,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromScale(0, 1),
+		Parent = pill,
+	})
+end
+
+local function buildCoinPanel()
+	local panel = hudPanel({
+		Name = "CoinPanel",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -16, 0, 16),
+		Size = UDim2.fromOffset(280, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Parent = gui,
+	})
+	padding(14, 16).Parent = panel
+	make("UIListLayout", { Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = panel })
+
+	local row = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 1, Parent = panel })
+	make("Frame", {
+		Name = "CoinIcon",
+		BackgroundColor3 = C.gold,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(22, 22),
+		Position = UDim2.fromOffset(0, 4),
+		Parent = row,
+	}, { make("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(Color3.fromRGB(176, 120, 30), 2, 0) })
+	coinLabel = label({
+		Text = "0",
+		FontFace = FONT_TITLE,
+		TextSize = 26,
+		Position = UDim2.fromOffset(32, 0),
+		Size = UDim2.new(1, -110, 1, 0),
+		Parent = row,
+	})
+	local levelPill = make("Frame", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.fromScale(1, 0.5),
+		Size = UDim2.fromOffset(0, 28),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundColor3 = C.accent,
+		BorderSizePixel = 0,
+		Parent = row,
+	}, { make("UICorner", { CornerRadius = UDim.new(1, 0) }), padding(0, 12) })
+	levelLabel = label({
+		Text = "Lv 1",
+		FontFace = FONT_TITLE,
+		TextSize = 16,
+		TextColor3 = C.ink,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromScale(0, 1),
+		Parent = levelPill,
+	})
+
+	xpFill = bar(panel, 8, C.accent, 2)
+	xpFill.Size = UDim2.fromScale(0, 1)
+
+	xpLabel = label({
+		Text = "0 / 100 XP",
+		FontFace = FONT_BODY_HEAVY,
+		TextSize = 16,
+		TextColor3 = C.muted,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Size = UDim2.new(1, 0, 0, 20),
+		LayoutOrder = 3,
+		Parent = panel,
+	})
+end
+
+local function buildBagPanel()
+	local panel = hudPanel({
+		Name = "BagPanel",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -16),
+		Size = UDim2.fromOffset(0, 58),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Parent = gui,
+	})
+	padding(0, 16).Parent = panel
+	make("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		Padding = UDim.new(0, 14),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = panel,
+	})
+	bagLabel = label({
+		Text = "Tas 0/10",
+		FontFace = FONT_TITLE,
+		TextSize = 18,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 30),
+		LayoutOrder = 1,
+		Parent = panel,
+	})
+	slotRow = make("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(0, 30),
+		AutomaticSize = Enum.AutomaticSize.X,
+		LayoutOrder = 2,
+		Parent = panel,
+	})
+	make("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		Padding = UDim.new(0, 6),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = slotRow,
+	})
+end
+
+local function buildPopup()
+	popup = make("CanvasGroup", {
+		Name = "ItemPopup",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 70),
+		Size = UDim2.fromOffset(360, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundColor3 = C.card,
+		BorderSizePixel = 0,
+		GroupTransparency = 1,
+		Visible = false,
+		Parent = gui,
+	}, { corner(18), padding(10, 16) })
+	popupStroke = stroke(Color3.new(1, 1, 1), 4, 0)
+	popupStroke.Parent = popup
+	make("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder, Parent = popup })
+
+	local header = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = 1, Parent = popup })
+	make("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		Padding = UDim.new(0, 10),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = header,
+	})
+	popupTitle = label({
+		Text = "Nemu item!",
+		FontFace = FONT_TITLE,
+		TextSize = 20,
+		TextColor3 = C.ink,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromScale(0, 1),
+		LayoutOrder = 1,
+		Parent = header,
+	})
+	local rarityPill = make("Frame", {
+		Size = UDim2.fromOffset(0, 24),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BorderSizePixel = 0,
+		LayoutOrder = 2,
+		Parent = header,
+	}, { make("UICorner", { CornerRadius = UDim.new(1, 0) }), padding(0, 12) })
+	popupRarity = label({
+		Text = "Common",
+		FontFace = FONT_TITLE,
+		TextSize = 16,
+		TextColor3 = Color3.new(1, 1, 1),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromScale(0, 1),
+		Parent = rarityPill,
+	})
+
+	popupName = label({
+		Text = "",
+		FontFace = FONT_TITLE,
+		TextSize = 26,
+		TextColor3 = C.ink,
+		Size = UDim2.new(1, 0, 0, 30),
+		LayoutOrder = 2,
+		Parent = popup,
+	})
+	popupMeta = label({
+		Text = "",
+		FontFace = FONT_BODY_HEAVY,
+		TextSize = 17,
+		TextColor3 = C.inkMuted,
+		Size = UDim2.new(1, 0, 0, 22),
+		Visible = false,
+		LayoutOrder = 3,
+		Parent = popup,
+	})
+	popupReward = label({
+		Text = "",
+		FontFace = FONT_BODY_HEAVY,
+		TextSize = 17,
+		TextColor3 = C.ink,
+		TextWrapped = true,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, 22),
+		LayoutOrder = 4,
+		Parent = popup,
+	})
+end
+
+local function buildToast()
+	toast = make("CanvasGroup", {
+		Name = "Toast",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -90),
+		Size = UDim2.fromOffset(0, 46),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundColor3 = C.panel,
+		BackgroundTransparency = 0.1,
+		BorderSizePixel = 0,
+		GroupTransparency = 1,
+		Visible = false,
+		Parent = gui,
+	}, { make("UICorner", { CornerRadius = UDim.new(1, 0) }), padding(0, 18) })
+	toastLabel = label({
+		Text = "",
+		FontFace = FONT_BODY_HEAVY,
+		TextSize = 18,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromScale(0, 1),
+		Parent = toast,
+	})
+end
+
+-- Tombol Lari khusus HP. Sengaja di ScreenGui terpisah tanpa UIScale,
+-- supaya posisinya pas di sebelah kiri tombol lompat bawaan Roblox.
+local runButton: TextButton? = nil
+
+local function buildRunButton()
+	if not UserInputService.TouchEnabled then
+		return
+	end
+	local touchGui = make("ScreenGui", {
+		Name = "TouchControls",
+		ResetOnSpawn = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	})
+	local button = make("TextButton", {
+		Name = "RunButton",
+		AnchorPoint = Vector2.new(0, 0),
+		BackgroundColor3 = C.panel,
+		BackgroundTransparency = 0.15,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		FontFace = FONT_TITLE,
+		Text = "Lari",
+		TextColor3 = C.cream,
+		TextSize = 18,
+		Parent = touchGui,
+	}, { make("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(C.cream, 2, 0.6) })
+
+	local function place()
+		local camera = workspace.CurrentCamera
+		local vp = camera and camera.ViewportSize or Vector2.new(1280, 720)
+		if math.min(vp.X, vp.Y) <= 500 then
+			-- Layar HP: tombol lompat 70px di (W-95, H-90)
+			button.Size = UDim2.fromOffset(64, 64)
+			button.Position = UDim2.new(1, -175, 1, -87)
+		else
+			-- Tablet: tombol lompat 120px di (W-170, H-210)
+			button.Size = UDim2.fromOffset(96, 96)
+			button.Position = UDim2.new(1, -290, 1, -198)
+		end
+	end
+	place()
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(place)
+
+	button.Activated:Connect(function()
+		StaminaController.setTouchSprint(not StaminaController.isTouchSprint())
+	end)
+
+	touchGui.Parent = player:WaitForChild("PlayerGui")
+	runButton = button
+end
+
+local function refreshRunButton()
+	local button = runButton
+	if not button then
+		return
+	end
+	local on = StaminaController.isTouchSprint()
+	button.BackgroundColor3 = on and C.accent or C.panel
+	button.TextColor3 = on and C.ink or C.cream
+	button.BackgroundTransparency = on and 0 or 0.15
+end
+
+-- ===== Update tampilan =====
+local function rebuildSlots()
+	local max = player:GetAttribute("BagMax") or Config.Bag.BaseSlots
+	for _, slot in slots do
+		slot:Destroy()
+	end
+	table.clear(slots)
+	for i = 1, max do
+		slots[i] = make("Frame", {
+			Name = "Slot" .. i,
+			Size = UDim2.fromOffset(30, 30),
+			BackgroundColor3 = C.empty,
+			BackgroundTransparency = 0.94,
+			BorderSizePixel = 0,
+			LayoutOrder = i,
+			Parent = slotRow,
+		}, { corner(8), stroke(C.cream, 2, 0.78) })
+	end
+end
+
+local function refreshBag()
+	local raw = player:GetAttribute("BagItems") or ""
+	local ids = raw == "" and {} or string.split(raw, ",")
+	local max = player:GetAttribute("BagMax") or Config.Bag.BaseSlots
+	if #slots ~= max then
+		rebuildSlots()
+	end
+	for i, slot in slots do
+		local item = itemById[ids[i]]
+		if item then
+			slot.BackgroundColor3 = Config.Rarity[item.Rarity].Color
+			slot.BackgroundTransparency = 0
+		else
+			slot.BackgroundColor3 = C.empty
+			slot.BackgroundTransparency = 0.94
+		end
+	end
+	bagLabel.Text = string.format("Tas %d/%d", #ids, max)
+	bagLabel.TextColor3 = #ids >= max and C.gold or C.cream
+end
+
+local coinDisplay = Instance.new("NumberValue")
+local function refreshCoins()
+	tween(coinDisplay, 0.6, { Value = player:GetAttribute("Coins") or 0 })
+end
+
+local lastLevel = 1
+local function refreshXP()
+	local xp = player:GetAttribute("XP") or 0
+	local level = player:GetAttribute("Level") or 1
+	local per = Config.Level.XPPerLevel
+	local inLevel = xp % per
+	levelLabel.Text = "Lv " .. level
+	xpLabel.Text = string.format("%d / %d XP", inLevel, per)
+	tween(xpFill, 0.5, { Size = UDim2.fromScale(inLevel / per, 1) })
+	if level > lastLevel then
+		UIController.toast("Naik level! Sekarang Lv " .. level)
+	end
+	lastLevel = level
+end
+
+local function refreshFrame()
+	local stamina = player:GetAttribute("Stamina") or 1
+	local exhausted = player:GetAttribute("Exhausted") == true
+	staminaFill.Size = UDim2.fromScale(stamina, 1)
+	staminaFill.BackgroundColor3 = exhausted and C.tired or C.stamina
+	staminaValue.Text = math.floor(stamina * 100 + 0.5) .. "%"
+
+	local t = Lighting.ClockTime
+	local hours = math.floor(t)
+	local minutes = math.floor((t - hours) * 60)
+	local isDay = t >= Config.DayNight.DayStart and t < Config.DayNight.DayEnd
+	timeLabel.Text = string.format("%s · %02d:%02d", isDay and "Siang" or "Malam", hours, minutes)
+	refreshRunButton()
+end
+
+local function updateScale(uiScale: UIScale)
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return
+	end
+	local vp = camera.ViewportSize
+	uiScale.Scale = math.clamp(math.min(vp.X / 1280, vp.Y / 720), 0.75, 1.25)
+end
+
+-- ===== API publik =====
+function UIController.toast(text: string)
+	toastToken += 1
+	local token = toastToken
+	toastLabel.Text = text
+	toast.Visible = true
+	tween(toast, 0.2, { GroupTransparency = 0 })
+	task.delay(2.5, function()
+		if token ~= toastToken then
+			return
+		end
+		local t = tween(toast, 0.3, { GroupTransparency = 1 })
+		t.Completed:Wait()
+		if token == toastToken then
+			toast.Visible = false
+		end
+	end)
+end
+
+function UIController.showItem(itemId: string, isNew: boolean)
+	local item = itemById[itemId]
+	if not item then
+		return
+	end
+	local rarity = Config.Rarity[item.Rarity]
+
+	popupToken += 1
+	local token = popupToken
+	popupTitle.Text = isNew and "Penemuan baru!" or "Nemu item!"
+	popupRarity.Text = item.Rarity
+	;(popupRarity.Parent :: Frame).BackgroundColor3 = RARITY_DEEP[item.Rarity] or C.ink
+	popupStroke.Color = rarity.Color
+	popupName.Text = item.Name
+	local reward = string.format("%s · +%d Koin · +%d XP", item.Category, rarity.Coin, rarity.XP + (isNew and rarity.FirstXP or 0))
+	popupReward.Text = reward
+
+	popup.Visible = true
+	popup.Position = UDim2.new(0.5, 0, 0, 46)
+	popup.GroupTransparency = 1
+	tween(popup, 0.3, { Position = UDim2.new(0.5, 0, 0, 70), GroupTransparency = 0 }, Enum.EasingStyle.Back)
+
+	local hold = item.Rarity == "Legendary" and 4 or (item.Rarity == "Epic" and 3 or 1.8)
+	task.delay(hold, function()
+		if token ~= popupToken then
+			return
+		end
+		local t = tween(popup, 0.3, { GroupTransparency = 1 })
+		t.Completed:Wait()
+		if token == popupToken then
+			popup.Visible = false
+		end
+	end)
+end
+
+function UIController.start()
+	gui = make("ScreenGui", {
+		Name = "HUD",
+		ResetOnSpawn = false,
+		IgnoreGuiInset = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	})
+	local uiScale = make("UIScale", { Parent = gui })
+
+	buildStaminaPanel()
+	buildZonePill()
+	buildCoinPanel()
+	buildBagPanel()
+	buildPopup()
+	buildToast()
+	gui.Parent = player:WaitForChild("PlayerGui")
+	buildRunButton()
+
+	updateScale(uiScale)
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+		updateScale(uiScale)
+	end)
+
+	coinDisplay.Changed:Connect(function(value)
+		coinLabel.Text = formatNumber(value)
+	end)
+
+	lastLevel = player:GetAttribute("Level") or 1
+	rebuildSlots()
+	refreshBag()
+	refreshXP()
+	coinDisplay.Value = player:GetAttribute("Coins") or 0
+	coinLabel.Text = formatNumber(coinDisplay.Value)
+
+	player:GetAttributeChangedSignal("BagItems"):Connect(refreshBag)
+	player:GetAttributeChangedSignal("BagMax"):Connect(refreshBag)
+	player:GetAttributeChangedSignal("Coins"):Connect(refreshCoins)
+	player:GetAttributeChangedSignal("XP"):Connect(refreshXP)
+	player:GetAttributeChangedSignal("Level"):Connect(refreshXP)
+	RunService.RenderStepped:Connect(refreshFrame)
+
+	local notify = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Notify")
+	notify.OnClientEvent:Connect(function(kind: string, data, extra)
+		if kind == "Collected" then
+			UIController.showItem(data, extra == true)
+		elseif kind == "BagFull" then
+			UIController.toast("Tas penuh! Turun dan setor ke Pos Ranger")
+		elseif kind == "BagEmpty" then
+			UIController.toast("Tas masih kosong, cari item dulu")
+		elseif kind == "Deposited" then
+			local text = string.format("Setor %d item: +%d Koin, +%d XP", data.count, data.coins, data.xp)
+			if data.newFinds > 0 then
+				text ..= string.format(" · %d penemuan baru", data.newFinds)
+			end
+			UIController.toast(text)
+		end
+	end)
+end
+
+return UIController
