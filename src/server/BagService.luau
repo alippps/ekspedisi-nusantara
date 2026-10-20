@@ -30,12 +30,24 @@ local function countJournal(journal): number
 	return count
 end
 
+-- Jurnal buat client: "itemId=jumlahSetor,itemId=jumlahSetor"
+local function encodeJournal(journal): string
+	local parts = {}
+	for itemId, count in journal do
+		if itemById[itemId] then
+			table.insert(parts, itemId .. "=" .. count)
+		end
+	end
+	return table.concat(parts, ",")
+end
+
 local function syncAttributes(player: Player, data)
 	player:SetAttribute("Coins", data.Coins)
 	player:SetAttribute("XP", data.XP)
 	player:SetAttribute("Level", levelFromXP(data.XP))
 	player:SetAttribute("BagCount", #data.Bag)
 	player:SetAttribute("BagItems", table.concat(data.Bag, ","))
+	player:SetAttribute("Journal", encodeJournal(data.Journal))
 	player:SetAttribute("JournalCount", countJournal(data.Journal))
 end
 

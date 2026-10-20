@@ -2,106 +2,33 @@
 -- Semua ukuran didesain di layar 1280x720, lalu diskalakan otomatis lewat UIScale.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
 local UserInputService = game:GetService("UserInputService")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local StaminaController = require(script.Parent.StaminaController)
+local JournalController = require(script.Parent.JournalController)
+local UIKit = require(script.Parent.UIKit)
+
+local C = UIKit.C
+local RARITY_DEEP = UIKit.RARITY_DEEP
+local FONT_TITLE = UIKit.FONT_TITLE
+local FONT_BODY_HEAVY = UIKit.FONT_BODY_HEAVY
+local make = UIKit.make
+local corner = UIKit.corner
+local stroke = UIKit.stroke
+local padding = UIKit.padding
+local label = UIKit.label
+local tween = UIKit.tween
 
 local player = Players.LocalPlayer
 
 local UIController = {}
 
--- ===== Gaya =====
-local C = {
-	panel = Color3.fromRGB(18, 32, 26),
-	cream = Color3.fromRGB(246, 235, 211),
-	muted = Color3.fromRGB(207, 196, 172),
-	ink = Color3.fromRGB(36, 48, 42),
-	inkMuted = Color3.fromRGB(90, 101, 95),
-	card = Color3.fromRGB(255, 248, 234),
-	accent = Color3.fromRGB(232, 135, 58),
-	stamina = Color3.fromRGB(123, 200, 106),
-	tired = Color3.fromRGB(232, 96, 58),
-	gold = Color3.fromRGB(242, 181, 68),
-	empty = Color3.fromRGB(246, 235, 211),
-}
-
--- Warna gelap untuk label rarity (teks putih tetap terbaca).
-local RARITY_DEEP = {
-	Common = Color3.fromRGB(95, 104, 100),
-	Uncommon = Color3.fromRGB(46, 125, 50),
-	Rare = Color3.fromRGB(44, 111, 184),
-	Epic = Color3.fromRGB(123, 63, 181),
-	Legendary = Color3.fromRGB(138, 97, 0),
-}
-
-local FONT_TITLE = Font.fromEnum(Enum.Font.FredokaOne)
-local FONT_BODY = Font.new(Font.fromEnum(Enum.Font.Nunito).Family, Enum.FontWeight.Bold)
-local FONT_BODY_HEAVY = Font.new(Font.fromEnum(Enum.Font.Nunito).Family, Enum.FontWeight.ExtraBold)
-
 local itemById = {}
 for _, item in Config.Items do
 	itemById[item.Id] = item
-end
-
--- ===== Helper pembuat instance =====
-local function make(className: string, props: { [string]: any }, children: { Instance }?)
-	local inst = Instance.new(className)
-	local parent = props.Parent
-	for key, value in props do
-		if key ~= "Parent" then
-			(inst :: any)[key] = value
-		end
-	end
-	if children then
-		for _, child in children do
-			child.Parent = inst
-		end
-	end
-	if parent then
-		inst.Parent = parent
-	end
-	return inst
-end
-
-local function corner(radius: number)
-	return make("UICorner", { CornerRadius = UDim.new(0, radius) })
-end
-
-local function stroke(color: Color3, thickness: number, transparency: number)
-	return make("UIStroke", {
-		Color = color,
-		Thickness = thickness,
-		Transparency = transparency,
-		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-	})
-end
-
-local function padding(vertical: number, horizontal: number)
-	return make("UIPadding", {
-		PaddingTop = UDim.new(0, vertical),
-		PaddingBottom = UDim.new(0, vertical),
-		PaddingLeft = UDim.new(0, horizontal),
-		PaddingRight = UDim.new(0, horizontal),
-	})
-end
-
-local function label(props: { [string]: any })
-	local defaults = {
-		BackgroundTransparency = 1,
-		FontFace = FONT_BODY,
-		TextColor3 = C.cream,
-		TextSize = 16,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextYAlignment = Enum.TextYAlignment.Center,
-	}
-	for key, value in props do
-		defaults[key] = value
-	end
-	return make("TextLabel", defaults)
 end
 
 local function hudPanel(props: { [string]: any })
@@ -145,12 +72,6 @@ local function formatNumber(n: number): string
 	return formatted
 end
 
-local function tween(inst: Instance, seconds: number, goal: { [string]: any }, style: Enum.EasingStyle?, direction: Enum.EasingDirection?)
-	local t = TweenService:Create(inst, TweenInfo.new(seconds, style or Enum.EasingStyle.Quad, direction or Enum.EasingDirection.Out), goal)
-	t:Play()
-	return t
-end
-
 -- ===== Bangun HUD =====
 local gui: ScreenGui
 local staminaFill: Frame
@@ -161,6 +82,8 @@ local levelLabel: TextLabel
 local xpFill: Frame
 local xpLabel: TextLabel
 local bagLabel: TextLabel
+local journalLabel: TextLabel
+local journalHint = ""
 local slotRow: Frame
 local slots: { Frame } = {}
 
@@ -234,14 +157,60 @@ local function buildZonePill()
 	})
 end
 
-local function buildCoinPanel()
-	local panel = hudPanel({
-		Name = "CoinPanel",
+-- Kolom kanan atas: panel koin, lalu tombol Jurnal di bawahnya.
+local function buildRightColumn(): Frame
+	local column = make("Frame", {
+		Name = "RightColumn",
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -16, 0, 16),
 		Size = UDim2.fromOffset(280, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1,
 		Parent = gui,
+	})
+	make("UIListLayout", {
+		Padding = UDim.new(0, 10),
+		HorizontalAlignment = Enum.HorizontalAlignment.Right,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = column,
+	})
+	return column
+end
+
+local function buildJournalButton(parent: Frame)
+	local button = make("TextButton", {
+		Name = "JournalButton",
+		Size = UDim2.fromOffset(0, 40),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundColor3 = C.panel,
+		BackgroundTransparency = 0.18,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Text = "",
+		LayoutOrder = 2,
+		Parent = parent,
+	}, { make("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(C.cream, 2, 0.82), padding(0, 18) })
+	-- Di PC kasih petunjuk tombol J; di HP cukup tap.
+	local hint = UserInputService.KeyboardEnabled and "  [J]" or ""
+	journalLabel = label({
+		Text = "Jurnal 0/" .. #Config.Items .. hint,
+		FontFace = FONT_TITLE,
+		TextSize = 18,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromScale(0, 1),
+		Parent = button,
+	})
+	journalHint = hint
+	button.Activated:Connect(JournalController.toggle)
+end
+
+local function buildCoinPanel(parent: Frame)
+	local panel = hudPanel({
+		Name = "CoinPanel",
+		Size = UDim2.fromScale(1, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 1,
+		Parent = parent,
 	})
 	padding(14, 16).Parent = panel
 	make("UIListLayout", { Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = panel })
@@ -607,6 +576,11 @@ local function refreshCoins()
 	end
 end
 
+local function refreshJournalButton()
+	local found = player:GetAttribute("JournalCount") or 0
+	journalLabel.Text = string.format("Jurnal %d/%d%s", found, #Config.Items, journalHint)
+end
+
 local lastLevel = 1
 local function refreshXP()
 	local xp = player:GetAttribute("XP") or 0
@@ -711,7 +685,9 @@ function UIController.start()
 
 	buildStaminaPanel()
 	buildZonePill()
-	buildCoinPanel()
+	local rightColumn = buildRightColumn()
+	buildCoinPanel(rightColumn)
+	buildJournalButton(rightColumn)
 	buildBagPanel()
 	buildPopup()
 	buildToast()
@@ -731,6 +707,7 @@ function UIController.start()
 	rebuildSlots()
 	refreshBag()
 	refreshXP()
+	refreshJournalButton()
 	coinDisplay.Value = player:GetAttribute("Coins") or 0
 	coinLabel.Text = formatNumber(coinDisplay.Value)
 
@@ -739,6 +716,7 @@ function UIController.start()
 	player:GetAttributeChangedSignal("Coins"):Connect(refreshCoins)
 	player:GetAttributeChangedSignal("XP"):Connect(refreshXP)
 	player:GetAttributeChangedSignal("Level"):Connect(refreshXP)
+	player:GetAttributeChangedSignal("JournalCount"):Connect(refreshJournalButton)
 	RunService.RenderStepped:Connect(refreshFrame)
 
 	local notify = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Notify")
