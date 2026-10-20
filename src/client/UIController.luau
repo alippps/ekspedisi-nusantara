@@ -21,10 +21,13 @@ local stroke = UIKit.stroke
 local padding = UIKit.padding
 local label = UIKit.label
 local tween = UIKit.tween
+local formatNumber = UIKit.formatNumber
 
 local player = Players.LocalPlayer
 
 local UIController = {}
+
+local BASE_BAG_SLOTS = Config.Upgrades.Bag.Levels[1].Value
 
 local itemById = {}
 for _, item in Config.Items do
@@ -61,15 +64,6 @@ local function bar(parent: Instance, height: number, color: Color3, order: numbe
 		Parent = track,
 	}, { corner(height // 2) })
 	return fill
-end
-
-local function formatNumber(n: number): string
-	local s = tostring(math.floor(n))
-	local formatted = s:reverse():gsub("(%d%d%d)", "%1."):reverse()
-	if formatted:sub(1, 1) == "." then
-		formatted = formatted:sub(2)
-	end
-	return formatted
 end
 
 -- ===== Bangun HUD =====
@@ -301,6 +295,7 @@ local function buildBagPanel()
 	})
 	make("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
 		Padding = UDim.new(0, 6),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = slotRow,
@@ -520,8 +515,18 @@ local function refreshRunButton()
 end
 
 -- ===== Update tampilan =====
+-- Tas hasil upgrade bisa sampai 20 slot: di atas 12 slot kotaknya dikecilin
+-- supaya panel tas tidak melebar sampai nabrak tombol Lari/lompat di HP.
+local COMPACT_SLOTS_ABOVE = 12
+
 local function rebuildSlots()
-	local max = player:GetAttribute("BagMax") or Config.Bag.BaseSlots
+	local max = player:GetAttribute("BagMax") or BASE_BAG_SLOTS
+	local compact = max > COMPACT_SLOTS_ABOVE
+	local slotSize = compact and 22 or 30
+	local layout = slotRow:FindFirstChildOfClass("UIListLayout")
+	if layout then
+		layout.Padding = UDim.new(0, compact and 4 or 6)
+	end
 	for _, slot in slots do
 		slot:Destroy()
 	end
@@ -529,7 +534,7 @@ local function rebuildSlots()
 	for i = 1, max do
 		slots[i] = make("Frame", {
 			Name = "Slot" .. i,
-			Size = UDim2.fromOffset(30, 30),
+			Size = UDim2.fromOffset(slotSize, slotSize),
 			BackgroundColor3 = C.empty,
 			BackgroundTransparency = 0.94,
 			BorderSizePixel = 0,
@@ -542,7 +547,7 @@ end
 local function refreshBag()
 	local raw = player:GetAttribute("BagItems") or ""
 	local ids = raw == "" and {} or string.split(raw, ",")
-	local max = player:GetAttribute("BagMax") or Config.Bag.BaseSlots
+	local max = player:GetAttribute("BagMax") or BASE_BAG_SLOTS
 	if #slots ~= max then
 		rebuildSlots()
 	end

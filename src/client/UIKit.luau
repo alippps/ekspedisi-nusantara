@@ -14,6 +14,8 @@ local C = {
 	tired = Color3.fromRGB(232, 96, 58),
 	gold = Color3.fromRGB(242, 181, 68),
 	empty = Color3.fromRGB(246, 235, 211),
+	success = Color3.fromRGB(46, 125, 50), -- teks/tombol berhasil di atas latar krem
+	danger = Color3.fromRGB(192, 72, 40), -- teks gagal di atas latar krem
 }
 
 -- Warna gelap untuk label rarity (teks putih tetap terbaca).
@@ -92,6 +94,113 @@ local function tween(inst: Instance, seconds: number, goal: { [string]: any }, s
 	return t
 end
 
+-- 1250 -> "1.250"
+local function formatNumber(n: number): string
+	local s = tostring(math.floor(n))
+	local formatted = s:reverse():gsub("(%d%d%d)", "%1."):reverse()
+	if formatted:sub(1, 1) == "." then
+		formatted = formatted:sub(2)
+	end
+	return formatted
+end
+
+-- ===== Modal (Jurnal, Toko) =====
+-- Panel di tengah layar + latar gelap. Latar sengaja di ScreenGui sendiri tanpa UIScale
+-- dan tanpa inset, supaya selalu nutup satu layar penuh (termasuk topbar dan notch HP).
+-- Tap di latar = onBackdrop(). Isi panel (layout dll.) diatur pemanggil.
+export type Modal = {
+	gui: ScreenGui,
+	panel: Frame,
+	show: () -> (),
+	hide: () -> (),
+	mount: (parent: Instance) -> (),
+}
+
+local function createModal(options: {
+	name: string,
+	displayOrder: number,
+	maxSize: Vector2,
+	onBackdrop: () -> (),
+}): Modal
+	local gui = make("ScreenGui", {
+		Name = options.name,
+		ResetOnSpawn = false,
+		IgnoreGuiInset = false,
+		DisplayOrder = options.displayOrder,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		Enabled = false,
+	})
+	local uiScale = make("UIScale", { Parent = gui })
+
+	local backdropGui = make("ScreenGui", {
+		Name = options.name .. "Backdrop",
+		ResetOnSpawn = false,
+		IgnoreGuiInset = true,
+		ScreenInsets = Enum.ScreenInsets.None,
+		ClipToDeviceSafeArea = false,
+		DisplayOrder = options.displayOrder - 1, -- tepat di bawah panelnya
+		Enabled = false,
+	})
+	local backdrop = make("TextButton", {
+		Name = "Backdrop",
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 0.45,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Text = "",
+		Size = UDim2.fromScale(1, 1),
+		Parent = backdropGui,
+	})
+	backdrop.Activated:Connect(function()
+		options.onBackdrop()
+	end)
+
+	local panel = make("Frame", {
+		Name = "Panel",
+		Active = true, -- tahan klik supaya tidak tembus ke Backdrop
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(0.92, 0.9),
+		BackgroundColor3 = C.card,
+		BorderSizePixel = 0,
+		Parent = gui,
+	}, {
+		corner(20),
+		padding(18, 20),
+		stroke(C.ink, 3, 0.4),
+		make("UISizeConstraint", { MaxSize = options.maxSize }),
+	})
+
+	local function updateScale()
+		local camera = workspace.CurrentCamera
+		if camera then
+			local vp = camera.ViewportSize
+			uiScale.Scale = math.clamp(math.min(vp.X / 1280, vp.Y / 720), 0.85, 1.25)
+		end
+	end
+	updateScale()
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale)
+
+	local modal = {} :: Modal
+	modal.gui = gui
+	modal.panel = panel
+	function modal.show()
+		backdropGui.Enabled = true
+		gui.Enabled = true
+		panel.Position = UDim2.new(0.5, 0, 0.5, 24)
+		tween(panel, 0.25, { Position = UDim2.fromScale(0.5, 0.5) }, Enum.EasingStyle.Back)
+	end
+	function modal.hide()
+		gui.Enabled = false
+		backdropGui.Enabled = false
+	end
+	function modal.mount(parent: Instance)
+		backdropGui.Parent = parent
+		gui.Parent = parent
+	end
+	return modal
+end
+
 return {
 	C = C,
 	RARITY_DEEP = RARITY_DEEP,
@@ -104,4 +213,6 @@ return {
 	padding = padding,
 	label = label,
 	tween = tween,
+	formatNumber = formatNumber,
+	createModal = createModal,
 }

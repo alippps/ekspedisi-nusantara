@@ -3,7 +3,7 @@
 local Config = {}
 
 Config.Stamina = {
-	Max = 100,
+	-- Stamina maks ada di Config.Upgrades.Stamina (tier 1 = awal)
 	SprintDrain = 18, -- per detik saat lari
 	ClimbDrain = 12, -- per detik saat manjat tangga/truss
 	UphillDrain = 6, -- per detik saat jalan nanjak
@@ -16,8 +16,41 @@ Config.Stamina = {
 	TiredSpeed = 10,
 }
 
-Config.Bag = {
-	BaseSlots = 10,
+-- Upgrade gear di Pos Ranger. Levels[1] = kondisi awal (gratis).
+-- Value = nilai stat di tier itu, Price = harga koin buat naik ke tier itu.
+-- MinLevel (opsional) = level pemain minimal buat beli tier itu, contoh: { Value = 17, Price = 900, MinLevel = 4 }
+Config.Upgrades = {
+	Bag = {
+		Name = "Tas Carrier",
+		Stat = "Slot tas",
+		Order = 1,
+		Levels = {
+			{ Value = 10, Price = 0 },
+			{ Value = 12, Price = 150 },
+			{ Value = 14, Price = 400 },
+			{ Value = 17, Price = 900 },
+			{ Value = 20, Price = 1800 },
+		},
+	},
+	Stamina = {
+		Name = "Sepatu Gunung",
+		Stat = "Stamina maks",
+		Order = 2,
+		Levels = {
+			{ Value = 100, Price = 0 },
+			{ Value = 120, Price = 120 },
+			{ Value = 140, Price = 350 },
+			{ Value = 165, Price = 800 },
+			{ Value = 200, Price = 1600 },
+		},
+	},
+}
+
+Config.Shop = {
+	PromptDistance = 10, -- jarak tombol "Upgrade" di Pos Ranger (stud)
+	MaxDistance = 16, -- server nolak beli kalau pemain lebih jauh dari ini dari Pos Ranger
+	CloseDistance = 14, -- panel toko otomatis nutup kalau pemain menjauh sejauh ini
+	BuyCooldown = 0.3, -- jeda minimal antar pembelian (detik), anti spam klik
 }
 
 Config.Spawn = {

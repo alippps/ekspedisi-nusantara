@@ -6,10 +6,14 @@ remotes.Name = "Remotes"
 local notify = Instance.new("RemoteEvent")
 notify.Name = "Notify"
 notify.Parent = remotes
+local buyUpgrade = Instance.new("RemoteFunction")
+buyUpgrade.Name = "BuyUpgrade"
+buyUpgrade.Parent = remotes
 remotes.Parent = ReplicatedStorage
 
 require(script.DayNightService).start()
-require(script.DataService).start() -- harus sebelum BagService
+require(script.DataService).start() -- harus sebelum Upgrade & Bag
+require(script.UpgradeService).start() -- sebelum BagService: BagMax harus sudah terisi sebelum DataLoaded
 require(script.BagService).start()
 require(script.SpawnService).start()
 require(script.RangerService).start()

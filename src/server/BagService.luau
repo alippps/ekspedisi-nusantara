@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local DataService = require(script.Parent.DataService)
+local UpgradeService = require(script.Parent.UpgradeService)
 
 local BagService = {}
 
@@ -17,7 +18,7 @@ local function levelFromXP(xp: number): number
 end
 
 local function bagMax(player: Player): number
-	return player:GetAttribute("BagMax") or Config.Bag.BaseSlots
+	return UpgradeService.getValue(player, "Bag")
 end
 
 local function countJournal(journal): number
@@ -61,7 +62,6 @@ local function setup(player: Player, data)
 	end
 	data.Bag = cleaned
 
-	player:SetAttribute("BagMax", Config.Bag.BaseSlots)
 	syncAttributes(player, data)
 	-- Paling akhir: tanda buat client kalau semua angka di atas sudah data asli.
 	player:SetAttribute("DataLoaded", true)

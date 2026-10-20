@@ -10,10 +10,16 @@ local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Co
 local S = Config.Stamina
 
 local player = Players.LocalPlayer
+local BASE_MAX = Config.Upgrades.Stamina.Levels[1].Value
 
 local StaminaController = {}
 
-local stamina = S.Max
+-- Stamina maks dari upgrade Sepatu Gunung (attribute StaminaMax diisi server).
+local function maxStamina(): number
+	return player:GetAttribute("StaminaMax") or BASE_MAX
+end
+
+local stamina = maxStamina()
 local exhausted = false
 local sprintHeld = false
 local touchSprint = false -- tombol Lari di HP (mode toggle)
@@ -23,7 +29,7 @@ local root: BasePart? = nil
 local function onCharacter(character: Model)
 	humanoid = character:WaitForChild("Humanoid") :: Humanoid
 	root = character:WaitForChild("HumanoidRootPart") :: BasePart
-	stamina = S.Max
+	stamina = maxStamina()
 	exhausted = false
 end
 
@@ -59,7 +65,8 @@ local function step(dt: number)
 	else
 		stamina += S.RegenIdle * dt
 	end
-	stamina = math.clamp(stamina, 0, S.Max)
+	local max = maxStamina()
+	stamina = math.clamp(stamina, 0, max)
 
 	if stamina <= 0 then
 		exhausted = true
@@ -76,7 +83,7 @@ local function step(dt: number)
 		hum.WalkSpeed = S.WalkSpeed
 	end
 
-	player:SetAttribute("Stamina", stamina / S.Max)
+	player:SetAttribute("Stamina", stamina / max)
 	player:SetAttribute("Exhausted", exhausted)
 end
 
@@ -93,6 +100,12 @@ function StaminaController.start()
 		task.spawn(onCharacter, player.Character)
 	end
 	player.CharacterAdded:Connect(onCharacter)
+
+	-- Habis upgrade Sepatu Gunung (atau data selesai dimuat): stamina langsung diisi penuh.
+	player:GetAttributeChangedSignal("StaminaMax"):Connect(function()
+		stamina = maxStamina()
+		exhausted = false
+	end)
 
 	-- Shift di PC, L3 di controller. Tombol Lari untuk HP dibuat oleh UIController.
 	ContextActionService:BindAction("Sprint", handleSprint, false, Enum.KeyCode.LeftShift, Enum.KeyCode.ButtonL3)

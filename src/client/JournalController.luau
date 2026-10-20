@@ -20,7 +20,6 @@ local corner = UIKit.corner
 local stroke = UIKit.stroke
 local padding = UIKit.padding
 local label = UIKit.label
-local tween = UIKit.tween
 
 local player = Players.LocalPlayer
 
@@ -59,8 +58,7 @@ do
 	end)
 end
 
-local gui: ScreenGui
-local backdropGui: ScreenGui
+local modal: UIKit.Modal? = nil
 local panel: Frame
 local progressLabel: TextLabel
 local tabButtons: { [string]: TextButton } = {}
@@ -250,7 +248,7 @@ local function refreshCard(item, count: number?, inBag: boolean)
 end
 
 local function refresh()
-	if not gui then
+	if not modal then
 		return
 	end
 	local journal = readJournal()
@@ -420,66 +418,16 @@ local function buildGrid()
 	end
 end
 
-local function updateScale(uiScale: UIScale)
-	local camera = workspace.CurrentCamera
-	if not camera then
-		return
-	end
-	local vp = camera.ViewportSize
-	uiScale.Scale = math.clamp(math.min(vp.X / 1280, vp.Y / 720), 0.85, 1.25)
-end
-
 local function build()
-	gui = make("ScreenGui", {
-		Name = "Journal",
-		ResetOnSpawn = false,
-		IgnoreGuiInset = false,
-		DisplayOrder = 10, -- di atas HUD dan kontrol sentuh
-		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-		Enabled = false,
+	modal = UIKit.createModal({
+		name = "Journal",
+		displayOrder = 10, -- di atas HUD dan kontrol sentuh
+		maxSize = Vector2.new(820, 580),
+		onBackdrop = function()
+			JournalController.close()
+		end,
 	})
-	local uiScale = make("UIScale", { Parent = gui })
-
-	-- Latar gelap; tap di luar panel = tutup. Sengaja di ScreenGui sendiri tanpa UIScale
-	-- dan tanpa inset, supaya selalu nutup satu layar penuh (termasuk topbar dan notch HP).
-	backdropGui = make("ScreenGui", {
-		Name = "JournalBackdrop",
-		ResetOnSpawn = false,
-		IgnoreGuiInset = true,
-		ScreenInsets = Enum.ScreenInsets.None,
-		ClipToDeviceSafeArea = false,
-		DisplayOrder = 9, -- tepat di bawah panel Jurnal
-		Enabled = false,
-	})
-	local backdrop = make("TextButton", {
-		Name = "Backdrop",
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = 0.45,
-		BorderSizePixel = 0,
-		AutoButtonColor = false,
-		Text = "",
-		Size = UDim2.fromScale(1, 1),
-		Parent = backdropGui,
-	})
-	backdrop.Activated:Connect(function()
-		JournalController.close()
-	end)
-
-	panel = make("Frame", {
-		Name = "Panel",
-		Active = true, -- tahan klik supaya tidak tembus ke Backdrop
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(0.92, 0.9),
-		BackgroundColor3 = C.card,
-		BorderSizePixel = 0,
-		Parent = gui,
-	}, {
-		corner(20),
-		padding(18, 20),
-		stroke(C.ink, 3, 0.4),
-		make("UISizeConstraint", { MaxSize = Vector2.new(820, 580) }),
-	})
+	panel = modal.panel
 	make("UIListLayout", {
 		Padding = UDim.new(0, SECTION_GAP),
 		SortOrder = Enum.SortOrder.LayoutOrder,
@@ -490,14 +438,7 @@ local function build()
 	buildTabs()
 	buildGrid()
 
-	updateScale(uiScale)
-	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-		updateScale(uiScale)
-	end)
-
-	local playerGui = player:WaitForChild("PlayerGui")
-	backdropGui.Parent = playerGui
-	gui.Parent = playerGui
+	modal.mount(player:WaitForChild("PlayerGui"))
 end
 
 -- ===== Input =====
@@ -521,15 +462,12 @@ function JournalController.isOpen(): boolean
 end
 
 function JournalController.open()
-	if isOpen or not gui then
+	if isOpen or not modal then
 		return
 	end
 	isOpen = true
 	refresh()
-	backdropGui.Enabled = true
-	gui.Enabled = true
-	panel.Position = UDim2.new(0.5, 0, 0.5, 24)
-	tween(panel, 0.25, { Position = UDim2.fromScale(0.5, 0.5) }, Enum.EasingStyle.Back)
+	modal.show()
 	-- Tombol B di controller buat nutup, cuma aktif selama jurnal terbuka.
 	ContextActionService:BindAction("CloseJournal", onCloseAction, false, Enum.KeyCode.ButtonB)
 end
@@ -539,8 +477,9 @@ function JournalController.close()
 		return
 	end
 	isOpen = false
-	gui.Enabled = false
-	backdropGui.Enabled = false
+	if modal then
+		modal.hide()
+	end
 	ContextActionService:UnbindAction("CloseJournal")
 end
 
