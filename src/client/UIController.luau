@@ -252,7 +252,7 @@ local function buildCoinPanel(parent: Frame)
 	xpFill.Size = UDim2.fromScale(0, 1)
 
 	xpLabel = label({
-		Text = "0 / 100 XP",
+		Text = string.format("0 / %d XP", Progression.xpToNext(1)),
 		FontFace = FONT_BODY_HEAVY,
 		TextSize = 16,
 		TextColor3 = C.muted,
@@ -591,13 +591,13 @@ end
 
 local lastLevel = 1
 local function refreshXP()
+	-- Level dihitung langsung dari XP biar bar & label selalu cocok,
+	-- walau attribute XP dan Level dari server nyampenya nggak barengan
 	local xp = player:GetAttribute("XP") or 0
-	local level = player:GetAttribute("Level") or 1
-	local per = Config.Level.XPPerLevel
-	local inLevel = xp % per
+	local level, inLevel, need = Progression.levelProgress(xp)
 	levelLabel.Text = "Lv " .. level
-	xpLabel.Text = string.format("%d / %d XP", inLevel, per)
-	tween(xpFill, 0.5, { Size = UDim2.fromScale(inLevel / per, 1) })
+	xpLabel.Text = string.format("%d / %d XP", inLevel, need)
+	tween(xpFill, 0.5, { Size = UDim2.fromScale(inLevel / need, 1) })
 	if level > lastLevel and isDataLoaded() then
 		local text = "Naik level! Sekarang Lv " .. level
 		-- Zona yang syarat levelnya baru kesampaian

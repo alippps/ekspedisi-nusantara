@@ -67,8 +67,17 @@ Config.DayNight = {
 	DayEnd = 18,
 }
 
+-- Kurva XP: XP buat naik dari Lv L ke L+1 = BaseXP * L^Growth, dibulatkan ke kelipatan RoundTo.
+-- Dengan angka di bawah:
+--   Lv 1→2: 100   (total 100)    Lv 4→5: 605   (total 1365)
+--   Lv 2→3: 245   (total 345)    Lv 5→6: 810   (total 2175)
+--   Lv 3→4: 415   (total 760)    Lv 9→10: 1740 (total 7690)
+-- Lv 3 (Hutan Lumut) kira-kira kebuka pas Jurnal Zona 1 hampir penuh (~260 XP dari temuan pertama).
+-- Level nggak disimpan, selalu dihitung dari XP, jadi aman diubah kapan aja.
 Config.Level = {
-	XPPerLevel = 100, -- sementara linear, nanti diganti kurva
+	BaseXP = 100,
+	Growth = 1.3, -- 1 = linear, makin besar makin curam
+	RoundTo = 5,
 }
 
 -- Zona gunung. Index = nomor zona (sama dengan folder SpawnPoints/ZoneN, Zones/ZoneN, ZoneGates/GateN).
