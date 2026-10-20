@@ -446,9 +446,31 @@ local function buildToast()
 	})
 end
 
--- Tombol Lari khusus HP. Sengaja di ScreenGui terpisah tanpa UIScale,
--- supaya posisinya pas di sebelah kiri tombol lompat bawaan Roblox.
+-- Tombol Lari khusus HP. Sengaja di ScreenGui terpisah tanpa UIScale.
+-- Posisi dan muncul/hilangnya ngikut JumpButton bawaan Roblox (TouchGui dari PlayerModule):
+-- kalau PlayerModule pindah ke mode keyboard, tombol lompat hilang, tombol Lari ikut hilang.
 local runButton: TextButton? = nil
+local runGui: ScreenGui? = nil
+local jumpButton: GuiObject? = nil
+
+local RUN_SIZE_RATIO = 0.85 -- ukuran tombol Lari relatif ke tombol lompat
+local RUN_GAP_RATIO = 0.2 -- jarak ke tombol lompat, relatif ke ukuran tombol lompat
+
+-- JumpButton bisa dihancurkan dan dibikin ulang oleh PlayerModule (misal layar diputar),
+-- jadi referensinya dicek ulang tiap kali sudah tidak punya Parent.
+local function findJumpButton(): (GuiObject?, ScreenGui?)
+	local playerGui = player:FindFirstChild("PlayerGui")
+	local touchGui = playerGui and playerGui:FindFirstChild("TouchGui")
+	if not touchGui or not touchGui:IsA("ScreenGui") then
+		return nil, nil
+	end
+	if not (jumpButton and jumpButton.Parent) then
+		local frame = touchGui:FindFirstChild("TouchControlFrame")
+		local found = frame and frame:FindFirstChild("JumpButton")
+		jumpButton = if found and found:IsA("GuiObject") then found else nil
+	end
+	return jumpButton, touchGui
+end
 
 local function buildRunButton()
 	if not UserInputService.TouchEnabled then
@@ -461,7 +483,8 @@ local function buildRunButton()
 	})
 	local button = make("TextButton", {
 		Name = "RunButton",
-		AnchorPoint = Vector2.new(0, 0),
+		AnchorPoint = Vector2.new(1, 0.5),
+		Visible = false,
 		BackgroundColor3 = C.panel,
 		BackgroundTransparency = 0.15,
 		BorderSizePixel = 0,
@@ -473,33 +496,52 @@ local function buildRunButton()
 		Parent = touchGui,
 	}, { make("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(C.cream, 2, 0.6) })
 
-	local function place()
-		local camera = workspace.CurrentCamera
-		local vp = camera and camera.ViewportSize or Vector2.new(1280, 720)
-		if math.min(vp.X, vp.Y) <= 500 then
-			-- Layar HP: tombol lompat 70px di (W-95, H-90)
-			button.Size = UDim2.fromOffset(64, 64)
-			button.Position = UDim2.new(1, -175, 1, -87)
-		else
-			-- Tablet: tombol lompat 120px di (W-170, H-210)
-			button.Size = UDim2.fromOffset(96, 96)
-			button.Position = UDim2.new(1, -290, 1, -198)
-		end
-	end
-	place()
-	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(place)
-
 	button.Activated:Connect(function()
 		StaminaController.setTouchSprint(not StaminaController.isTouchSprint())
 	end)
 
 	touchGui.Parent = player:WaitForChild("PlayerGui")
 	runButton = button
+	runGui = touchGui
+end
+
+-- Dipanggil tiap frame: tempelkan tombol Lari di kiri tombol lompat, sejajar tengahnya.
+local function syncRunButtonToJump(button: TextButton, gui: ScreenGui): boolean
+	local jump, touchGui = findJumpButton()
+	local shown = jump ~= nil and touchGui ~= nil and touchGui.Enabled and jump.Visible
+	if not shown or not jump or not touchGui then
+		return false
+	end
+
+	-- Samakan inset dengan TouchGui supaya koordinat Absolute-nya satu ruang.
+	if gui.IgnoreGuiInset ~= touchGui.IgnoreGuiInset then
+		gui.IgnoreGuiInset = touchGui.IgnoreGuiInset
+	end
+	if gui.ScreenInsets ~= touchGui.ScreenInsets then
+		gui.ScreenInsets = touchGui.ScreenInsets
+	end
+
+	local pos = jump.AbsolutePosition
+	local size = jump.AbsoluteSize
+	local runSize = math.floor(size.X * RUN_SIZE_RATIO)
+	button.Size = UDim2.fromOffset(runSize, runSize)
+	button.Position = UDim2.fromOffset(pos.X - size.X * RUN_GAP_RATIO, pos.Y + size.Y / 2)
+	return true
 end
 
 local function refreshRunButton()
 	local button = runButton
-	if not button then
+	local gui = runGui
+	if not button or not gui then
+		return
+	end
+	local shown = syncRunButtonToJump(button, gui)
+	button.Visible = shown
+	if not shown then
+		-- Kontrol sentuh mati (misal pindah ke keyboard): matikan juga mode lari HP.
+		if StaminaController.isTouchSprint() then
+			StaminaController.setTouchSprint(false)
+		end
 		return
 	end
 	local on = StaminaController.isTouchSprint()
