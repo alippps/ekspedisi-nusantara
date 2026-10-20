@@ -44,6 +44,35 @@ Config.Upgrades = {
 			{ Value = 200, Price = 1600 },
 		},
 	},
+	-- Value = jangkauan cahaya (stud). 0 = belum punya senter. Maks 60 (batas SpotLight Roblox).
+	Headlamp = {
+		Name = "Senter Kepala",
+		Stat = "Jangkauan cahaya",
+		Order = 3,
+		Levels = {
+			{ Value = 0, Price = 0 },
+			{ Value = 25, Price = 100 },
+			{ Value = 35, Price = 300 },
+			{ Value = 45, Price = 700 },
+			{ Value = 60, Price = 1400 },
+		},
+	},
+}
+
+-- Malam hari. Item yang jauh nggak kelihatan; jarak pandang = jangkauan senter (atau EyeRange kalau belum punya).
+Config.Night = {
+	EyeRange = 14, -- jarak pandang ke item tanpa senter (stud)
+	FadeDistance = 6, -- item memudar di ujung jarak pandang, bukan langsung hilang
+	NightItemsNeedHeadlamp = true, -- item Time="Night" cuma bisa diambil kalau punya senter
+	-- Lighting saat malam penuh (cuma di client, siang balik ke setelan asli map)
+	Ambient = Color3.fromRGB(12, 14, 24),
+	OutdoorAmbient = Color3.fromRGB(28, 32, 50),
+	Brightness = 0.4,
+	ExposureOffset = -0.3, -- ditambah ke ExposureCompensation asli; makin minus makin gelap
+	-- Cahaya senter
+	LightBrightness = 3,
+	LightAngle = 70,
+	LightColor = Color3.fromRGB(255, 240, 210),
 }
 
 Config.Shop = {
@@ -65,6 +94,7 @@ Config.DayNight = {
 	StartClock = 8, -- jam saat server mulai
 	DayStart = 6,
 	DayEnd = 18,
+	TransitionHours = 1, -- lama senja/subuh (jam game) buat gelap-terang pelan-pelan
 }
 
 -- Kurva XP: XP buat naik dari Lv L ke L+1 = BaseXP * L^Growth, dibulatkan ke kelipatan RoundTo.

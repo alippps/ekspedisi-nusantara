@@ -17,5 +17,6 @@ require(script.UpgradeService).start() -- sebelum BagService: BagMax harus sudah
 require(script.BagService).start()
 require(script.SpawnService).start()
 require(script.RangerService).start()
+require(script.HeadlampService).start()
 
 print("[Ekspedisi Nusantara] server siap")

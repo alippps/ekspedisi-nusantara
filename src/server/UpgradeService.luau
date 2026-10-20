@@ -1,6 +1,6 @@
--- Upgrade gear (Tas Carrier, Sepatu Gunung). Tier tersimpan di data.Upgrades, harga & nilai di Config.Upgrades.
+-- Upgrade gear (Tas Carrier, Sepatu Gunung, Senter Kepala). Tier tersimpan di data.Upgrades, harga & nilai di Config.Upgrades.
 -- Pembelian cuma lewat UpgradeService.buy, yang dipanggil RangerService setelah cek jarak ke Pos Ranger.
--- Hasilnya dicerminkan ke attribute: "Upgrade_<Id>" = tier, plus stat-nya (BagMax, StaminaMax).
+-- Hasilnya dicerminkan ke attribute: "Upgrade_<Id>" = tier, plus stat-nya (BagMax, StaminaMax, HeadlampRange).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -14,6 +14,7 @@ local UpgradeService = {}
 local STAT_ATTRIBUTE = {
 	Bag = "BagMax",
 	Stamina = "StaminaMax",
+	Headlamp = "HeadlampRange",
 }
 
 local lastBuy = {} -- [Player] = os.clock() pembelian terakhir

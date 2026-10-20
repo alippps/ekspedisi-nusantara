@@ -98,6 +98,8 @@ spawnAt = function(point: BasePart, zone: number)
 				notify:FireClient(player, "DataLoading")
 			elseif reason == "locked" then
 				notify:FireClient(player, "ZoneLocked", item.Zone)
+			elseif reason == "dark" then
+				notify:FireClient(player, "NeedHeadlamp", item.Name)
 			end
 			return
 		end

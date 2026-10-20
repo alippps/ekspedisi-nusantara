@@ -86,6 +86,9 @@ function BagService.tryAdd(player: Player, itemId: string): (boolean, string?)
 	if not Progression.isZoneUnlocked(Progression.levelFromXP(data.XP), item.Zone) then
 		return false, "locked"
 	end
+	if item.Time == "Night" and Config.Night.NightItemsNeedHeadlamp and UpgradeService.getValue(player, "Headlamp") <= 0 then
+		return false, "dark"
+	end
 	if #data.Bag >= bagMax(player) then
 		return false, "full"
 	end

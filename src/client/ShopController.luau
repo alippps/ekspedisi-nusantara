@@ -95,7 +95,9 @@ local function refresh()
 		for i, dot in card.dots do
 			dot.BackgroundColor3 = if i <= tier then C.accent else C.muted
 		end
-		card.stat.Text = string.format("%s: %d", upgrade.Stat, levels[tier].Value)
+		-- Value 0 = gear-nya belum punya (contoh: tier 1 Senter Kepala)
+		local value = levels[tier].Value
+		card.stat.Text = if value == 0 then "Belum punya" else string.format("%s: %d", upgrade.Stat, value)
 
 		local button: TextButton = card.button
 		if not nextLevel then
@@ -329,7 +331,7 @@ local function build()
 	modal = UIKit.createModal({
 		name = "Shop",
 		displayOrder = 12, -- di atas Jurnal
-		maxSize = Vector2.new(640, 380),
+		maxSize = Vector2.new(860, 380), -- 3 kartu sejajar
 		onBackdrop = function()
 			ShopController.close()
 		end,

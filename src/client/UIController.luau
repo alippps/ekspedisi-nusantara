@@ -758,6 +758,8 @@ function UIController.start()
 			UIController.toast("Tas masih kosong, cari item dulu")
 		elseif kind == "ZoneLocked" then
 			UIController.toast(zoneLockedText(data))
+		elseif kind == "NeedHeadlamp" then
+			UIController.toast(string.format("Terlalu gelap! %s butuh %s, beli di Pos Ranger", data, Config.Upgrades.Headlamp.Name))
 		elseif kind == "DataLoading" then
 			UIController.toast("Data kamu masih dimuat, tunggu sebentar ya")
 		elseif kind == "Deposited" then

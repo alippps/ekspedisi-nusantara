@@ -237,6 +237,11 @@ local function refreshCard(item, count: number?, inBag: boolean)
 			card.hint.TextColor3 = C.inkMuted
 			card.stroke.Color = C.inkMuted
 			card.stroke.Transparency = 0.7
+		elseif item.Time == "Night" and Config.Night.NightItemsNeedHeadlamp and (player:GetAttribute("HeadlampRange") or 0) <= 0 then
+			card.hint.Text = "Malam · butuh Senter"
+			card.hint.TextColor3 = C.inkMuted
+			card.stroke.Color = C.inkMuted
+			card.stroke.Transparency = 0.7
 		else
 			card.hint.Text = TIME_HINT[item.Time] or ""
 			card.hint.TextColor3 = C.inkMuted
@@ -509,6 +514,7 @@ function JournalController.start()
 	player:GetAttributeChangedSignal("Journal"):Connect(refreshIfOpen)
 	player:GetAttributeChangedSignal("BagItems"):Connect(refreshIfOpen)
 	player:GetAttributeChangedSignal("Level"):Connect(refreshIfOpen)
+	player:GetAttributeChangedSignal("HeadlampRange"):Connect(refreshIfOpen)
 end
 
 return JournalController
