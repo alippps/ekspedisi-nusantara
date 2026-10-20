@@ -9,6 +9,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ContextActionService = game:GetService("ContextActionService")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Progression = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Progression"))
 local UIKit = require(script.Parent.UIKit)
 
 local C = UIKit.C
@@ -231,6 +232,11 @@ local function refreshCard(item, count: number?, inBag: boolean)
 			card.hint.TextColor3 = C.accent
 			card.stroke.Color = C.accent
 			card.stroke.Transparency = 0
+		elseif not Progression.isZoneUnlocked(player:GetAttribute("Level") or 1, item.Zone) then
+			card.hint.Text = string.format("Terbuka di Lv %d", Progression.zoneMinLevel(item.Zone))
+			card.hint.TextColor3 = C.inkMuted
+			card.stroke.Color = C.inkMuted
+			card.stroke.Transparency = 0.7
 		else
 			card.hint.Text = TIME_HINT[item.Time] or ""
 			card.hint.TextColor3 = C.inkMuted
@@ -502,6 +508,7 @@ function JournalController.start()
 	end
 	player:GetAttributeChangedSignal("Journal"):Connect(refreshIfOpen)
 	player:GetAttributeChangedSignal("BagItems"):Connect(refreshIfOpen)
+	player:GetAttributeChangedSignal("Level"):Connect(refreshIfOpen)
 end
 
 return JournalController

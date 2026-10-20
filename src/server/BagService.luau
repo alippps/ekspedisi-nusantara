@@ -3,6 +3,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Progression = require(ReplicatedStorage.Shared.Progression)
 local DataService = require(script.Parent.DataService)
 local UpgradeService = require(script.Parent.UpgradeService)
 
@@ -11,10 +12,6 @@ local BagService = {}
 local itemById = {}
 for _, item in Config.Items do
 	itemById[item.Id] = item
-end
-
-local function levelFromXP(xp: number): number
-	return 1 + math.floor(xp / Config.Level.XPPerLevel)
 end
 
 local function bagMax(player: Player): number
@@ -45,7 +42,7 @@ end
 local function syncAttributes(player: Player, data)
 	player:SetAttribute("Coins", data.Coins)
 	player:SetAttribute("XP", data.XP)
-	player:SetAttribute("Level", levelFromXP(data.XP))
+	player:SetAttribute("Level", Progression.levelFromXP(data.XP))
 	player:SetAttribute("BagCount", #data.Bag)
 	player:SetAttribute("BagItems", table.concat(data.Bag, ","))
 	player:SetAttribute("Journal", encodeJournal(data.Journal))
@@ -77,12 +74,17 @@ function BagService.getItem(itemId: string)
 end
 
 function BagService.tryAdd(player: Player, itemId: string): (boolean, string?)
-	if not itemById[itemId] then
+	local item = itemById[itemId]
+	if not item then
 		return false, "invalid"
 	end
 	local data = DataService.get(player)
 	if not data then
 		return false, "loading"
+	end
+	-- Kunci zona yang beneran: gerbang di client bisa ditembus exploiter, tapi item tetap tidak bisa diambil.
+	if not Progression.isZoneUnlocked(Progression.levelFromXP(data.XP), item.Zone) then
+		return false, "locked"
 	end
 	if #data.Bag >= bagMax(player) then
 		return false, "full"

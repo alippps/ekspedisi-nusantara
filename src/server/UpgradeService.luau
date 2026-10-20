@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Progression = require(ReplicatedStorage.Shared.Progression)
 local DataService = require(script.Parent.DataService)
 
 local UpgradeService = {}
@@ -16,10 +17,6 @@ local STAT_ATTRIBUTE = {
 }
 
 local lastBuy = {} -- [Player] = os.clock() pembelian terakhir
-
-local function levelFromXP(xp: number): number
-	return 1 + math.floor(xp / Config.Level.XPPerLevel)
-end
 
 local function tierOf(data, upgradeId: string): number
 	local upgrade = Config.Upgrades[upgradeId]
@@ -67,7 +64,7 @@ function UpgradeService.buy(player: Player, upgradeId: any): (boolean, string?, 
 	if not nextLevel then
 		return false, "max"
 	end
-	if nextLevel.MinLevel and levelFromXP(data.XP) < nextLevel.MinLevel then
+	if nextLevel.MinLevel and Progression.levelFromXP(data.XP) < nextLevel.MinLevel then
 		return false, "level"
 	end
 	if data.Coins < nextLevel.Price then

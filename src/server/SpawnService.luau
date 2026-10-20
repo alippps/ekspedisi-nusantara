@@ -96,6 +96,8 @@ spawnAt = function(point: BasePart, zone: number)
 				notify:FireClient(player, "BagFull")
 			elseif reason == "loading" then
 				notify:FireClient(player, "DataLoading")
+			elseif reason == "locked" then
+				notify:FireClient(player, "ZoneLocked", item.Zone)
 			end
 			return
 		end

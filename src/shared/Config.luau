@@ -71,6 +71,13 @@ Config.Level = {
 	XPPerLevel = 100, -- sementara linear, nanti diganti kurva
 }
 
+-- Zona gunung. Index = nomor zona (sama dengan folder SpawnPoints/ZoneN, Zones/ZoneN, ZoneGates/GateN).
+-- MinLevel = level pemain minimal buat masuk & ambil item di zona itu.
+Config.Zones = {
+	{ Name = "Kaki Gunung", MinLevel = 1 },
+	{ Name = "Hutan Lumut", MinLevel = 3 },
+}
+
 Config.Rarity = {
 	Common = { Weight = 60, Coin = 5, XP = 2, FirstXP = 10, Color = Color3.fromRGB(154, 163, 160) },
 	Uncommon = { Weight = 25, Coin = 15, XP = 5, FirstXP = 25, Color = Color3.fromRGB(93, 182, 90) },
@@ -79,8 +86,8 @@ Config.Rarity = {
 	Legendary = { Weight = 1, Coin = 500, XP = 120, FirstXP = 400, Color = Color3.fromRGB(232, 178, 46) },
 }
 
--- Prototype: 10 item Zona 1. Zona 2 dan 3 ditambah di fase MVP.
 -- Time: "Any" | "Day" | "Night"
+-- Icon (opsional): "rbxassetid://..." buat gambar di Jurnal
 Config.Items = {
 	{ Id = "pakis_hutan", Name = "Pakis Hutan", Category = "Flora", Rarity = "Common", Zone = 1, Time = "Any" },
 	{ Id = "kupu_biru", Name = "Kupu-kupu Biru", Category = "Fauna", Rarity = "Common", Zone = 1, Time = "Day" },
@@ -92,6 +99,18 @@ Config.Items = {
 	{ Id = "kunang_kunang", Name = "Kunang-kunang", Category = "Fauna", Rarity = "Uncommon", Zone = 1, Time = "Night" },
 	{ Id = "kantong_semar", Name = "Kantong Semar", Category = "Flora", Rarity = "Rare", Zone = 1, Time = "Any" },
 	{ Id = "koin_kuno", Name = "Koin Kuno", Category = "Artefak", Rarity = "Rare", Zone = 1, Time = "Night" },
+
+	-- Zona 2 · Hutan Lumut (daftar sementara, boleh diganti)
+	{ Id = "lumut_hutan", Name = "Lumut Hutan", Category = "Flora", Rarity = "Common", Zone = 2, Time = "Any" },
+	{ Id = "jamur_merah", Name = "Jamur Merah", Category = "Flora", Rarity = "Common", Zone = 2, Time = "Any" },
+	{ Id = "kodok_pohon", Name = "Kodok Pohon", Category = "Fauna", Rarity = "Common", Zone = 2, Time = "Night" },
+	{ Id = "cantigi_gunung", Name = "Cantigi Gunung", Category = "Flora", Rarity = "Uncommon", Zone = 2, Time = "Any" },
+	{ Id = "kumbang_tanduk", Name = "Kumbang Tanduk", Category = "Fauna", Rarity = "Uncommon", Zone = 2, Time = "Any" },
+	{ Id = "batu_obsidian", Name = "Batu Obsidian", Category = "Batuan", Rarity = "Uncommon", Zone = 2, Time = "Any" },
+	{ Id = "lutung_jawa", Name = "Lutung Jawa", Category = "Fauna", Rarity = "Rare", Zone = 2, Time = "Day" },
+	{ Id = "burung_celepuk", Name = "Burung Celepuk", Category = "Fauna", Rarity = "Rare", Zone = 2, Time = "Night" },
+	{ Id = "elang_jawa", Name = "Elang Jawa", Category = "Fauna", Rarity = "Epic", Zone = 2, Time = "Day" },
+	{ Id = "arca_batu", Name = "Arca Batu Kecil", Category = "Artefak", Rarity = "Epic", Zone = 2, Time = "Night" },
 }
 
 return Config

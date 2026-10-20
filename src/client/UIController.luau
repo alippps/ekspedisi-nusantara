@@ -7,8 +7,10 @@ local Lighting = game:GetService("Lighting")
 local UserInputService = game:GetService("UserInputService")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Progression = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Progression"))
 local StaminaController = require(script.Parent.StaminaController)
 local JournalController = require(script.Parent.JournalController)
+local ZoneController = require(script.Parent.ZoneController)
 local UIKit = require(script.Parent.UIKit)
 
 local C = UIKit.C
@@ -76,6 +78,7 @@ local levelLabel: TextLabel
 local xpFill: Frame
 local xpLabel: TextLabel
 local bagLabel: TextLabel
+local zoneLabel: TextLabel
 local journalLabel: TextLabel
 local journalHint = ""
 local slotRow: Frame
@@ -141,8 +144,8 @@ local function buildZonePill()
 		BorderSizePixel = 0,
 		Parent = gui,
 	}, { make("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(C.cream, 2, 0.82), padding(0, 22) })
-	label({
-		Text = "Zona 1 · Kaki Gunung",
+	zoneLabel = label({
+		Text = "",
 		FontFace = FONT_TITLE,
 		TextSize = 18,
 		AutomaticSize = Enum.AutomaticSize.X,
@@ -596,9 +599,25 @@ local function refreshXP()
 	xpLabel.Text = string.format("%d / %d XP", inLevel, per)
 	tween(xpFill, 0.5, { Size = UDim2.fromScale(inLevel / per, 1) })
 	if level > lastLevel and isDataLoaded() then
-		UIController.toast("Naik level! Sekarang Lv " .. level)
+		local text = "Naik level! Sekarang Lv " .. level
+		-- Zona yang syarat levelnya baru kesampaian
+		for zone in Config.Zones do
+			local minLevel = Progression.zoneMinLevel(zone)
+			if minLevel > lastLevel and minLevel <= level then
+				text ..= " · " .. Progression.zoneName(zone) .. " terbuka!"
+			end
+		end
+		UIController.toast(text)
 	end
 	lastLevel = level
+end
+
+local function refreshZone(zone: number)
+	zoneLabel.Text = string.format("Zona %d · %s", zone, Progression.zoneName(zone))
+end
+
+local function zoneLockedText(zone: number): string
+	return string.format("%s terbuka di Lv %d", Progression.zoneName(zone), Progression.zoneMinLevel(zone))
 end
 
 local function refreshFrame()
@@ -713,6 +732,11 @@ function UIController.start()
 	refreshBag()
 	refreshXP()
 	refreshJournalButton()
+	refreshZone(ZoneController.getZone())
+	ZoneController.onZoneChanged(refreshZone)
+	ZoneController.onGateBlocked(function(zone)
+		UIController.toast(zoneLockedText(zone))
+	end)
 	coinDisplay.Value = player:GetAttribute("Coins") or 0
 	coinLabel.Text = formatNumber(coinDisplay.Value)
 
@@ -732,6 +756,8 @@ function UIController.start()
 			UIController.toast("Tas penuh! Turun dan setor ke Pos Ranger")
 		elseif kind == "BagEmpty" then
 			UIController.toast("Tas masih kosong, cari item dulu")
+		elseif kind == "ZoneLocked" then
+			UIController.toast(zoneLockedText(data))
 		elseif kind == "DataLoading" then
 			UIController.toast("Data kamu masih dimuat, tunggu sebentar ya")
 		elseif kind == "Deposited" then

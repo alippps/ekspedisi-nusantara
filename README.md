@@ -18,6 +18,17 @@ Jangan ganti nama `PlayerData_v1` di `src/server/DataService.luau` setelah rilis
 `src/server/Packages/ProfileStore.luau` adalah ProfileStore 1.0.3 dari
 https://github.com/MadStudioRoblox/ProfileStore (commit `45c9847`, lisensi Apache-2.0). Jangan diedit langsung.
 
+## Setup map di Studio
+Semua di Workspace, nama harus persis:
+- `PosRanger`: Part (atau Model berisi Part), tempat Setor dan Upgrade.
+- `SpawnPoints > Zone1, Zone2, ...` (Folder): Part kecil di tanah sebagai titik munculnya item. Otomatis jadi transparan.
+- `Zones > Zone1, Zone2, ...`: Part transparan besar yang menutup area tiap zona, termasuk cukup tinggi di atas tanah
+  (Anchored on; CanCollide, CanTouch, CanQuery, CastShadow off; Transparency 1).
+  Boleh juga Model/Folder bernama `ZoneN` berisi beberapa Part kalau bentuk areanya rumit. Boleh tumpang tindih:
+  nomor zona paling besar yang dipakai. Dipakai buat pill zona di HUD.
+- `ZoneGates > Gate2, ...`: Part (atau Model) yang menutup jalan masuk zona itu (Anchored, CanCollide on).
+  Terbuka otomatis (tembus + hilang) buat pemain yang levelnya cukup. Syarat level ada di `Config.Zones`.
+
 ## Struktur
 - `src/shared` → ReplicatedStorage.Shared (Config, dipakai client dan server)
 - `src/server` → ServerScriptService.Server
