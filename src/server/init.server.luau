@@ -9,6 +9,7 @@ notify.Parent = remotes
 remotes.Parent = ReplicatedStorage
 
 require(script.DayNightService).start()
+require(script.DataService).start() -- harus sebelum BagService
 require(script.BagService).start()
 require(script.SpawnService).start()
 require(script.RangerService).start()

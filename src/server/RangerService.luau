@@ -27,8 +27,10 @@ function RangerService.start()
 	prompt.Parent = anchor
 
 	prompt.Triggered:Connect(function(player: Player)
-		local summary = BagService.deposit(player)
-		if summary.count == 0 then
+		local summary, reason = BagService.deposit(player)
+		if reason == "loading" then
+			notify:FireClient(player, "DataLoading")
+		elseif summary.count == 0 then
 			notify:FireClient(player, "BagEmpty")
 		else
 			notify:FireClient(player, "Deposited", summary)

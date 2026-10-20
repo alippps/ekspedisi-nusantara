@@ -1,9 +1,9 @@
--- Tas, koin, XP, dan jurnal per pemain. Sementara disimpan di memori (hilang saat keluar).
--- Nanti diganti DataService + ProfileStore supaya tersimpan permanen.
-local Players = game:GetService("Players")
+-- Tas, koin, XP, dan jurnal per pemain. Datanya disimpan permanen lewat DataService;
+-- attribute di Player cuma cermin buat HUD (client tidak pernah ngirim data ke sini).
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local DataService = require(script.Parent.DataService)
 
 local BagService = {}
 
@@ -12,24 +12,52 @@ for _, item in Config.Items do
 	itemById[item.Id] = item
 end
 
-local bags = {} -- [Player] = { itemId, ... }
-local journals = {} -- [Player] = { [itemId] = true }
+local function levelFromXP(xp: number): number
+	return 1 + math.floor(xp / Config.Level.XPPerLevel)
+end
 
-local function setup(player: Player)
-	bags[player] = {}
-	journals[player] = {}
-	player:SetAttribute("Coins", 0)
-	player:SetAttribute("XP", 0)
-	player:SetAttribute("Level", 1)
-	player:SetAttribute("BagCount", 0)
+local function bagMax(player: Player): number
+	return player:GetAttribute("BagMax") or Config.Bag.BaseSlots
+end
+
+local function countJournal(journal): number
+	local count = 0
+	for itemId in journal do
+		if itemById[itemId] then
+			count += 1
+		end
+	end
+	return count
+end
+
+local function syncAttributes(player: Player, data)
+	player:SetAttribute("Coins", data.Coins)
+	player:SetAttribute("XP", data.XP)
+	player:SetAttribute("Level", levelFromXP(data.XP))
+	player:SetAttribute("BagCount", #data.Bag)
+	player:SetAttribute("BagItems", table.concat(data.Bag, ","))
+	player:SetAttribute("JournalCount", countJournal(data.Journal))
+end
+
+local function setup(player: Player, data)
+	-- Buang item tersimpan yang sudah tidak ada di Config (misal item dihapus/diganti Id).
+	local cleaned = {}
+	for _, itemId in data.Bag do
+		if itemById[itemId] then
+			table.insert(cleaned, itemId)
+		end
+	end
+	data.Bag = cleaned
+
 	player:SetAttribute("BagMax", Config.Bag.BaseSlots)
-	player:SetAttribute("JournalCount", 0)
-	player:SetAttribute("BagItems", "")
+	syncAttributes(player, data)
+	-- Paling akhir: tanda buat client kalau semua angka di atas sudah data asli.
+	player:SetAttribute("DataLoaded", true)
 end
 
 function BagService.isDiscovered(player: Player, itemId: string): boolean
-	local journal = journals[player]
-	return journal ~= nil and journal[itemId] == true
+	local data = DataService.get(player)
+	return data ~= nil and data.Journal[itemId] ~= nil
 end
 
 function BagService.getItem(itemId: string)
@@ -37,28 +65,34 @@ function BagService.getItem(itemId: string)
 end
 
 function BagService.tryAdd(player: Player, itemId: string): (boolean, string?)
-	local bag = bags[player]
-	if not bag or not itemById[itemId] then
+	if not itemById[itemId] then
 		return false, "invalid"
 	end
-	if #bag >= (player:GetAttribute("BagMax") or Config.Bag.BaseSlots) then
+	local data = DataService.get(player)
+	if not data then
+		return false, "loading"
+	end
+	if #data.Bag >= bagMax(player) then
 		return false, "full"
 	end
-	table.insert(bag, itemId)
-	player:SetAttribute("BagCount", #bag)
-	player:SetAttribute("BagItems", table.concat(bag, ","))
+	table.insert(data.Bag, itemId)
+	player:SetAttribute("BagCount", #data.Bag)
+	player:SetAttribute("BagItems", table.concat(data.Bag, ","))
 	return true, nil
 end
 
 function BagService.deposit(player: Player)
-	local bag = bags[player]
-	local journal = journals[player]
 	local summary = { count = 0, coins = 0, xp = 0, newFinds = 0 }
-	if not bag or #bag == 0 then
-		return summary
+	local data = DataService.get(player)
+	if not data then
+		return summary, "loading"
+	end
+	if #data.Bag == 0 then
+		return summary, nil
 	end
 
-	for _, itemId in bag do
+	local journal = data.Journal
+	for _, itemId in data.Bag do
 		local item = itemById[itemId]
 		local rarity = item and Config.Rarity[item.Rarity]
 		if rarity then
@@ -66,38 +100,22 @@ function BagService.deposit(player: Player)
 			summary.coins += rarity.Coin
 			summary.xp += rarity.XP
 			if not journal[itemId] then
-				journal[itemId] = true
 				summary.xp += rarity.FirstXP
 				summary.newFinds += 1
 			end
+			journal[itemId] = (journal[itemId] or 0) + 1
 		end
 	end
 
-	table.clear(bag)
-	local xp = (player:GetAttribute("XP") or 0) + summary.xp
-	local journalCount = 0
-	for _ in journal do
-		journalCount += 1
-	end
-
-	player:SetAttribute("Coins", (player:GetAttribute("Coins") or 0) + summary.coins)
-	player:SetAttribute("XP", xp)
-	player:SetAttribute("Level", 1 + math.floor(xp / Config.Level.XPPerLevel))
-	player:SetAttribute("BagCount", 0)
-	player:SetAttribute("BagItems", "")
-	player:SetAttribute("JournalCount", journalCount)
-	return summary
+	table.clear(data.Bag)
+	data.Coins += summary.coins
+	data.XP += summary.xp
+	syncAttributes(player, data)
+	return summary, nil
 end
 
 function BagService.start()
-	for _, player in Players:GetPlayers() do
-		setup(player)
-	end
-	Players.PlayerAdded:Connect(setup)
-	Players.PlayerRemoving:Connect(function(player)
-		bags[player] = nil
-		journals[player] = nil
-	end)
+	DataService.onLoaded(setup)
 end
 
 return BagService

@@ -591,9 +591,20 @@ local function refreshBag()
 	bagLabel.TextColor3 = #ids >= max and C.gold or C.cream
 end
 
+-- Sebelum DataLoaded, angka yang masuk adalah data tersimpan (bukan hasil main),
+-- jadi langsung dipasang tanpa animasi dan tanpa toast naik level.
+local function isDataLoaded(): boolean
+	return player:GetAttribute("DataLoaded") == true
+end
+
 local coinDisplay = Instance.new("NumberValue")
 local function refreshCoins()
-	tween(coinDisplay, 0.6, { Value = player:GetAttribute("Coins") or 0 })
+	local coins = player:GetAttribute("Coins") or 0
+	if isDataLoaded() then
+		tween(coinDisplay, 0.6, { Value = coins })
+	else
+		coinDisplay.Value = coins
+	end
 end
 
 local lastLevel = 1
@@ -605,7 +616,7 @@ local function refreshXP()
 	levelLabel.Text = "Lv " .. level
 	xpLabel.Text = string.format("%d / %d XP", inLevel, per)
 	tween(xpFill, 0.5, { Size = UDim2.fromScale(inLevel / per, 1) })
-	if level > lastLevel then
+	if level > lastLevel and isDataLoaded() then
 		UIController.toast("Naik level! Sekarang Lv " .. level)
 	end
 	lastLevel = level
@@ -738,6 +749,8 @@ function UIController.start()
 			UIController.toast("Tas penuh! Turun dan setor ke Pos Ranger")
 		elseif kind == "BagEmpty" then
 			UIController.toast("Tas masih kosong, cari item dulu")
+		elseif kind == "DataLoading" then
+			UIController.toast("Data kamu masih dimuat, tunggu sebentar ya")
 		elseif kind == "Deposited" then
 			local text = string.format("Setor %d item: +%d Koin, +%d XP", data.count, data.coins, data.xp)
 			if data.newFinds > 0 then

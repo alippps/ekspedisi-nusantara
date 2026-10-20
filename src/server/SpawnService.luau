@@ -94,6 +94,8 @@ spawnAt = function(point: BasePart, zone: number)
 		if not ok then
 			if reason == "full" then
 				notify:FireClient(player, "BagFull")
+			elseif reason == "loading" then
+				notify:FireClient(player, "DataLoading")
 			end
 			return
 		end
