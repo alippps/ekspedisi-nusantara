@@ -5,12 +5,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
 local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local Progression = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Progression"))
 local StaminaController = require(script.Parent.StaminaController)
 local JournalController = require(script.Parent.JournalController)
 local ZoneController = require(script.Parent.ZoneController)
+local NightController = require(script.Parent.NightController)
 local UIKit = require(script.Parent.UIKit)
 
 local C = UIKit.C
@@ -73,6 +75,8 @@ local gui: ScreenGui
 local staminaFill: Frame
 local staminaValue: TextLabel
 local timeLabel: TextLabel
+local sunIcon: Frame
+local moonIcon: Frame
 local coinLabel: TextLabel
 local levelLabel: TextLabel
 local xpFill: Frame
@@ -122,13 +126,50 @@ local function buildStaminaPanel()
 
 	staminaFill = bar(panel, 12, C.stamina, 2)
 
+	-- Baris jam: ikon matahari (siang) / bulan sabit (malam) + teks jam
+	local timeRow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 22), LayoutOrder = 3, Parent = panel })
+	make("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		Padding = UDim.new(0, 8),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = timeRow,
+	})
+	sunIcon = make("Frame", {
+		Name = "SunIcon",
+		BackgroundColor3 = C.gold,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(18, 18),
+		LayoutOrder = 1,
+		Parent = timeRow,
+	}, { make("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(Color3.fromRGB(176, 120, 30), 2, 0) })
+	-- Bulan sabit = lingkaran krem yang "digigit" lingkaran warna panel
+	moonIcon = make("Frame", {
+		Name = "MoonIcon",
+		BackgroundColor3 = C.cream,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(18, 18),
+		Visible = false,
+		LayoutOrder = 1,
+		Parent = timeRow,
+	}, {
+		make("UICorner", { CornerRadius = UDim.new(1, 0) }),
+		make("Frame", {
+			Name = "Bite",
+			BackgroundColor3 = C.panel,
+			BorderSizePixel = 0,
+			Size = UDim2.fromOffset(15, 15),
+			Position = UDim2.fromOffset(7, -3),
+		}, { make("UICorner", { CornerRadius = UDim.new(1, 0) }) }),
+	})
+
 	timeLabel = label({
 		Text = "Siang · 08:00",
 		FontFace = FONT_BODY_HEAVY,
 		TextSize = 18,
-		Size = UDim2.new(1, 0, 0, 22),
-		LayoutOrder = 3,
-		Parent = panel,
+		Size = UDim2.new(1, -26, 1, 0),
+		LayoutOrder = 2,
+		Parent = timeRow,
 	})
 end
 
@@ -413,10 +454,12 @@ local function buildToast()
 	})
 end
 
--- Tombol Lari khusus HP. Sengaja di ScreenGui terpisah tanpa UIScale.
+-- Tombol Lari & Senter khusus HP. Sengaja di ScreenGui terpisah tanpa UIScale.
 -- Posisi dan muncul/hilangnya ngikut JumpButton bawaan Roblox (TouchGui dari PlayerModule):
--- kalau PlayerModule pindah ke mode keyboard, tombol lompat hilang, tombol Lari ikut hilang.
+-- kalau PlayerModule pindah ke mode keyboard, tombol lompat hilang, tombol Lari & Senter ikut hilang.
+-- Urutan dari kanan: Lompat, Lari, Senter. Senter cuma muncul kalau udah punya. Di PC pakai tombol F.
 local runButton: TextButton? = nil
+local headlampButton: TextButton? = nil
 local runGui: ScreenGui? = nil
 local jumpButton: GuiObject? = nil
 
@@ -437,6 +480,13 @@ local function findJumpButton(): (GuiObject?, ScreenGui?)
 		jumpButton = if found and found:IsA("GuiObject") then found else nil
 	end
 	return jumpButton, touchGui
+end
+
+-- Dipakai tombol Senter (HP) dan tombol F (PC).
+local function toggleHeadlamp()
+	if not NightController.toggleHeadlamp() then
+		UIController.toast(string.format("Belum punya %s, beli di Pos Ranger", Config.Upgrades.Headlamp.Name))
+	end
 end
 
 local function buildRunButton()
@@ -467,8 +517,25 @@ local function buildRunButton()
 		StaminaController.setTouchSprint(not StaminaController.isTouchSprint())
 	end)
 
+	local lamp = make("TextButton", {
+		Name = "HeadlampButton",
+		AnchorPoint = Vector2.new(1, 0.5),
+		Visible = false,
+		BackgroundColor3 = C.panel,
+		BackgroundTransparency = 0.15,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		FontFace = FONT_TITLE,
+		Text = "Senter",
+		TextColor3 = C.cream,
+		TextSize = 16,
+		Parent = touchGui,
+	}, { make("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(C.cream, 2, 0.6) })
+	lamp.Activated:Connect(toggleHeadlamp)
+
 	touchGui.Parent = player:WaitForChild("PlayerGui")
 	runButton = button
+	headlampButton = lamp
 	runGui = touchGui
 end
 
@@ -491,8 +558,15 @@ local function syncRunButtonToJump(button: TextButton, gui: ScreenGui): boolean
 	local pos = jump.AbsolutePosition
 	local size = jump.AbsoluteSize
 	local runSize = math.floor(size.X * RUN_SIZE_RATIO)
+	local gap = size.X * RUN_GAP_RATIO
 	button.Size = UDim2.fromOffset(runSize, runSize)
-	button.Position = UDim2.fromOffset(pos.X - size.X * RUN_GAP_RATIO, pos.Y + size.Y / 2)
+	button.Position = UDim2.fromOffset(pos.X - gap, pos.Y + size.Y / 2)
+	-- Senter di kiri tombol Lari, jaraknya sama
+	local lamp = headlampButton
+	if lamp then
+		lamp.Size = UDim2.fromOffset(runSize, runSize)
+		lamp.Position = UDim2.fromOffset(pos.X - gap - runSize - gap, pos.Y + size.Y / 2)
+	end
 	return true
 end
 
@@ -504,6 +578,14 @@ local function refreshRunButton()
 	end
 	local shown = syncRunButtonToJump(button, gui)
 	button.Visible = shown
+	local lamp = headlampButton
+	if lamp then
+		lamp.Visible = shown and NightController.hasHeadlamp()
+		local lampOn = NightController.isHeadlampOn()
+		lamp.BackgroundColor3 = lampOn and C.gold or C.panel
+		lamp.TextColor3 = lampOn and C.ink or C.cream
+		lamp.BackgroundTransparency = lampOn and 0 or 0.15
+	end
 	if not shown then
 		-- Kontrol sentuh mati (misal pindah ke keyboard): matikan juga mode lari HP.
 		if StaminaController.isTouchSprint() then
@@ -620,6 +702,14 @@ local function zoneLockedText(zone: number): string
 	return string.format("%s terbuka di Lv %d", Progression.zoneName(zone), Progression.zoneMinLevel(zone))
 end
 
+-- Toast gelap: udah punya senter = suruh nyalain, belum punya = suruh beli
+local function darkText(): string
+	if NightController.hasHeadlamp() then
+		return "Terlalu gelap. Nyalakan Senter untuk melihat item."
+	end
+	return string.format("Terlalu gelap. Beli %s di Pos Ranger untuk melihat item.", Config.Upgrades.Headlamp.Name)
+end
+
 local function refreshFrame()
 	local stamina = player:GetAttribute("Stamina") or 1
 	local exhausted = player:GetAttribute("Exhausted") == true
@@ -632,6 +722,8 @@ local function refreshFrame()
 	local minutes = math.floor((t - hours) * 60)
 	local isDay = t >= Config.DayNight.DayStart and t < Config.DayNight.DayEnd
 	timeLabel.Text = string.format("%s · %02d:%02d", isDay and "Siang" or "Malam", hours, minutes)
+	sunIcon.Visible = isDay
+	moonIcon.Visible = not isDay
 	refreshRunButton()
 end
 
@@ -737,6 +829,16 @@ function UIController.start()
 	ZoneController.onGateBlocked(function(zone)
 		UIController.toast(zoneLockedText(zone))
 	end)
+	NightController.onDarkWarning(function()
+		UIController.toast(darkText())
+	end)
+	-- Senter di PC (F) & controller (Y). Tombol HP dibuat di buildRunButton.
+	ContextActionService:BindAction("ToggleHeadlamp", function(_name, state, _input)
+		if state == Enum.UserInputState.Begin then
+			toggleHeadlamp()
+		end
+		return Enum.ContextActionResult.Sink
+	end, false, Enum.KeyCode.F, Enum.KeyCode.ButtonY)
 	coinDisplay.Value = player:GetAttribute("Coins") or 0
 	coinLabel.Text = formatNumber(coinDisplay.Value)
 
@@ -758,8 +860,14 @@ function UIController.start()
 			UIController.toast("Tas masih kosong, cari item dulu")
 		elseif kind == "ZoneLocked" then
 			UIController.toast(zoneLockedText(data))
+		elseif kind == "Debug" then
+			UIController.toast("[Debug] " .. data)
 		elseif kind == "NeedHeadlamp" then
-			UIController.toast(string.format("Terlalu gelap! %s butuh %s, beli di Pos Ranger", data, Config.Upgrades.Headlamp.Name))
+			if NightController.hasHeadlamp() then
+				UIController.toast(darkText())
+			else
+				UIController.toast(string.format("Terlalu gelap! %s butuh %s, beli di Pos Ranger", data, Config.Upgrades.Headlamp.Name))
+			end
 		elseif kind == "DataLoading" then
 			UIController.toast("Data kamu masih dimuat, tunggu sebentar ya")
 		elseif kind == "Deposited" then

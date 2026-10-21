@@ -9,6 +9,9 @@ notify.Parent = remotes
 local buyUpgrade = Instance.new("RemoteFunction")
 buyUpgrade.Name = "BuyUpgrade"
 buyUpgrade.Parent = remotes
+local toggleHeadlamp = Instance.new("RemoteEvent")
+toggleHeadlamp.Name = "ToggleHeadlamp"
+toggleHeadlamp.Parent = remotes
 remotes.Parent = ReplicatedStorage
 
 require(script.DayNightService).start()
@@ -18,5 +21,10 @@ require(script.BagService).start()
 require(script.SpawnService).start()
 require(script.RangerService).start()
 require(script.HeadlampService).start()
+
+-- Perintah debug chat cuma di Studio; di server publik modulnya nggak di-require sama sekali.
+if game:GetService("RunService"):IsStudio() then
+	require(script.DebugService).start()
+end
 
 print("[Ekspedisi Nusantara] server siap")

@@ -45,32 +45,50 @@ Config.Upgrades = {
 		},
 	},
 	-- Value = jangkauan cahaya (stud). 0 = belum punya senter. Maks 60 (batas SpotLight Roblox).
+	-- Brightness = terangnya cahaya senter di tier itu.
 	Headlamp = {
 		Name = "Senter Kepala",
 		Stat = "Jangkauan cahaya",
 		Order = 3,
 		Levels = {
-			{ Value = 0, Price = 0 },
-			{ Value = 25, Price = 100 },
-			{ Value = 35, Price = 300 },
-			{ Value = 45, Price = 700 },
-			{ Value = 60, Price = 1400 },
+			{ Value = 0, Price = 0, Brightness = 0 },
+			{ Value = 25, Price = 100, Brightness = 2 },
+			{ Value = 35, Price = 300, Brightness = 3 },
+			{ Value = 45, Price = 700, Brightness = 4 },
+			{ Value = 60, Price = 1400, Brightness = 5 },
 		},
 	},
 }
 
--- Malam hari. Item yang jauh nggak kelihatan; jarak pandang = jangkauan senter (atau EyeRange kalau belum punya).
+-- Malam hari. Item yang jauh nggak kelihatan; jarak pandang = jangkauan senter kalau lagi nyala, kalau nggak EyeRange.
 Config.Night = {
 	EyeRange = 14, -- jarak pandang ke item tanpa senter (stud)
 	FadeDistance = 6, -- item memudar di ujung jarak pandang, bukan langsung hilang
-	NightItemsNeedHeadlamp = true, -- item Time="Night" cuma bisa diambil kalau punya senter
+	NightItemsNeedHeadlamp = true, -- item Time="Night" cuma bisa diambil kalau senter lagi nyala
 	-- Lighting saat malam penuh (cuma di client, siang balik ke setelan asli map)
 	Ambient = Color3.fromRGB(12, 14, 24),
 	OutdoorAmbient = Color3.fromRGB(28, 32, 50),
 	Brightness = 0.4,
 	ExposureOffset = -0.3, -- ditambah ke ExposureCompensation asli; makin minus makin gelap
-	-- Cahaya senter
-	LightBrightness = 3,
+	-- Malam di zona yang DarkNight = true (lihat Config.Zones): jauh lebih gelap dari malam biasa
+	Deep = {
+		Ambient = Color3.fromRGB(6, 7, 12),
+		OutdoorAmbient = Color3.fromRGB(12, 14, 24),
+		Brightness = 0.1,
+		ExposureOffset = -1.2, -- dipakai ganti ExposureOffset biasa
+		Saturation = -0.5, -- ColorCorrection: warna makin pudar
+		TintColor = Color3.fromRGB(175, 190, 235), -- ColorCorrection: agak kebiruan
+		BlendSpeed = 1.5, -- kecepatan gelap/terang pas masuk/keluar zona (per detik, 1 = 1 detik penuh)
+	},
+	-- Jalur & pagar tetap samar kelihatan pas gelap: kasih Tag ini (Properties > Tags) ke Model/Part-nya.
+	-- Tiap yang di-tag dapat 1 Highlight, Roblox maksimal 31 Highlight, jadi kelompokkan jadi beberapa Model aja.
+	GuideTag = "JalurMalam",
+	GuideColor = Color3.fromRGB(235, 225, 200),
+	GuideOutline = 0.55, -- transparansi garis pinggir pas paling gelap (1 = nggak kelihatan)
+	GuideFill = 0.9, -- transparansi isi pas paling gelap
+	DarkToastCooldown = 30, -- detik antar toast "Terlalu gelap"
+	ToggleCooldown = 0.2, -- jeda minimal nyala/matiin senter (anti spam)
+	-- Cahaya senter (jangkauan & terang per tier ada di Config.Upgrades.Headlamp)
 	LightAngle = 70,
 	LightColor = Color3.fromRGB(255, 240, 210),
 }
@@ -112,9 +130,11 @@ Config.Level = {
 
 -- Zona gunung. Index = nomor zona (sama dengan folder SpawnPoints/ZoneN, Zones/ZoneN, ZoneGates/GateN).
 -- MinLevel = level pemain minimal buat masuk & ambil item di zona itu.
+-- DarkNight (opsional) = malam di zona ini jauh lebih gelap (Config.Night.Deep).
 Config.Zones = {
 	{ Name = "Kaki Gunung", MinLevel = 1 },
 	{ Name = "Hutan Lumut", MinLevel = 3 },
+	{ Name = "Puncak & Kawah", MinLevel = 4, DarkNight = true },
 }
 
 Config.Rarity = {
@@ -150,6 +170,18 @@ Config.Items = {
 	{ Id = "burung_celepuk", Name = "Burung Celepuk", Category = "Fauna", Rarity = "Rare", Zone = 2, Time = "Night" },
 	{ Id = "elang_jawa", Name = "Elang Jawa", Category = "Fauna", Rarity = "Epic", Zone = 2, Time = "Day" },
 	{ Id = "arca_batu", Name = "Arca Batu Kecil", Category = "Artefak", Rarity = "Epic", Zone = 2, Time = "Night" },
+
+	-- Zona 3 · Puncak & Kawah (daftar sementara, boleh diganti)
+	{ Id = "rumput_ilalang", Name = "Rumput Ilalang", Category = "Flora", Rarity = "Common", Zone = 3, Time = "Any" },
+	{ Id = "belalang_sabana", Name = "Belalang Sabana", Category = "Fauna", Rarity = "Common", Zone = 3, Time = "Day" },
+	{ Id = "batu_apung", Name = "Batu Apung", Category = "Batuan", Rarity = "Common", Zone = 3, Time = "Any" },
+	{ Id = "arbei_hutan", Name = "Arbei Hutan", Category = "Flora", Rarity = "Uncommon", Zone = 3, Time = "Any" },
+	{ Id = "puyuh_gunung", Name = "Puyuh Gunung", Category = "Fauna", Rarity = "Uncommon", Zone = 3, Time = "Day" },
+	{ Id = "batu_belerang", Name = "Batu Belerang", Category = "Batuan", Rarity = "Uncommon", Zone = 3, Time = "Any" },
+	{ Id = "edelweis_jawa", Name = "Edelweis Jawa", Category = "Flora", Rarity = "Rare", Zone = 3, Time = "Any" },
+	{ Id = "kijang_muncak", Name = "Kijang Muncak", Category = "Fauna", Rarity = "Rare", Zone = 3, Time = "Night" },
+	{ Id = "macan_tutul", Name = "Macan Tutul Jawa", Category = "Fauna", Rarity = "Epic", Zone = 3, Time = "Night" },
+	{ Id = "prasasti_kuno", Name = "Prasasti Kuno", Category = "Artefak", Rarity = "Legendary", Zone = 3, Time = "Any" },
 }
 
 return Config

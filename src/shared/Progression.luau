@@ -25,6 +25,15 @@ function Progression.levelProgress(xp: number): (number, number, number)
 	return level, xp, need
 end
 
+-- Total XP minimal buat ada di `level` (Lv 1 = 0 XP)
+function Progression.totalXPForLevel(level: number): number
+	local total = 0
+	for l = 1, level - 1 do
+		total += Progression.xpToNext(l)
+	end
+	return total
+end
+
 function Progression.levelFromXP(xp: number): number
 	return (Progression.levelProgress(xp))
 end

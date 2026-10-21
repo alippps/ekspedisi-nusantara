@@ -86,8 +86,11 @@ function BagService.tryAdd(player: Player, itemId: string): (boolean, string?)
 	if not Progression.isZoneUnlocked(Progression.levelFromXP(data.XP), item.Zone) then
 		return false, "locked"
 	end
-	if item.Time == "Night" and Config.Night.NightItemsNeedHeadlamp and UpgradeService.getValue(player, "Headlamp") <= 0 then
-		return false, "dark"
+	-- Item malam: harus punya senter DAN lagi dinyalain (HeadlampOn cuma diset server)
+	if item.Time == "Night" and Config.Night.NightItemsNeedHeadlamp then
+		if UpgradeService.getValue(player, "Headlamp") <= 0 or player:GetAttribute("HeadlampOn") ~= true then
+			return false, "dark"
+		end
 	end
 	if #data.Bag >= bagMax(player) then
 		return false, "full"
@@ -129,6 +132,14 @@ function BagService.deposit(player: Player)
 	data.XP += summary.xp
 	syncAttributes(player, data)
 	return summary, nil
+end
+
+-- Kirim ulang semua angka ke attribute (dipakai DebugService setelah ngubah data langsung).
+function BagService.sync(player: Player)
+	local data = DataService.get(player)
+	if data then
+		syncAttributes(player, data)
+	end
 end
 
 function BagService.start()

@@ -79,6 +79,19 @@ function UpgradeService.buy(player: Player, upgradeId: any): (boolean, string?, 
 	return true, nil, tier + 1
 end
 
+-- Khusus DebugService: paksa tier upgrade tanpa bayar (dibatasi ke tier yang ada di Config).
+function UpgradeService.setTier(player: Player, upgradeId: string, tier: number): number?
+	local upgrade = Config.Upgrades[upgradeId]
+	local data = DataService.get(player)
+	if not upgrade or not data then
+		return nil
+	end
+	tier = math.clamp(tier, 1, #upgrade.Levels)
+	data.Upgrades[upgradeId] = tier
+	apply(player, data)
+	return tier
+end
+
 function UpgradeService.start()
 	DataService.onLoaded(function(player, data)
 		data.Upgrades = data.Upgrades or {}

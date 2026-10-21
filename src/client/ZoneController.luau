@@ -8,6 +8,7 @@
 -- (BagService nolak ambil item di zona yang belum terbuka).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local Progression = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Progression"))
 
@@ -167,10 +168,15 @@ function ZoneController.start()
 	player:GetAttributeChangedSignal("Level"):Connect(refreshGates)
 
 	task.spawn(function()
+		local isStudio = RunService:IsStudio()
 		while true do
 			local character = player.Character
 			local hrp = character and character:FindFirstChild("HumanoidRootPart")
-			if hrp and hrp:IsA("BasePart") then
+			-- /zona dari DebugService (cuma Studio) ngalahin deteksi posisi
+			local forced = isStudio and player:GetAttribute("DebugZone")
+			if type(forced) == "number" then
+				setZone(forced)
+			elseif hrp and hrp:IsA("BasePart") then
 				local zone = detectZone(hrp.Position)
 				if zone then
 					setZone(zone)
