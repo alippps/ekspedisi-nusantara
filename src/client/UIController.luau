@@ -13,6 +13,7 @@ local StaminaController = require(script.Parent.StaminaController)
 local JournalController = require(script.Parent.JournalController)
 local ZoneController = require(script.Parent.ZoneController)
 local NightController = require(script.Parent.NightController)
+local GateController = require(script.Parent.GateController)
 local UIKit = require(script.Parent.UIKit)
 
 local C = UIKit.C
@@ -681,15 +682,8 @@ local function refreshXP()
 	xpLabel.Text = string.format("%d / %d XP", inLevel, need)
 	tween(xpFill, 0.5, { Size = UDim2.fromScale(inLevel / need, 1) })
 	if level > lastLevel and isDataLoaded() then
-		local text = "Naik level! Sekarang Lv " .. level
-		-- Zona yang syarat levelnya baru kesampaian
-		for zone in Config.Zones do
-			local minLevel = Progression.zoneMinLevel(zone)
-			if minLevel > lastLevel and minLevel <= level then
-				text ..= " · " .. Progression.zoneName(zone) .. " terbuka!"
-			end
-		end
-		UIController.toast(text)
+		-- Zona yang kebuka diumumkan banner GateController (syaratnya bisa lebih dari level)
+		UIController.toast("Naik level! Sekarang Lv " .. level)
 	end
 	lastLevel = level
 end
@@ -699,7 +693,7 @@ local function refreshZone(zone: number)
 end
 
 local function zoneLockedText(zone: number): string
-	return string.format("%s terbuka di Lv %d", Progression.zoneName(zone), Progression.zoneMinLevel(zone))
+	return string.format("%s butuh %s", Progression.zoneName(zone), GateController.missingText(zone))
 end
 
 -- Toast gelap: udah punya senter = suruh nyalain, belum punya = suruh beli
@@ -826,9 +820,6 @@ function UIController.start()
 	refreshJournalButton()
 	refreshZone(ZoneController.getZone())
 	ZoneController.onZoneChanged(refreshZone)
-	ZoneController.onGateBlocked(function(zone)
-		UIController.toast(zoneLockedText(zone))
-	end)
 	NightController.onDarkWarning(function()
 		UIController.toast(darkText())
 	end)

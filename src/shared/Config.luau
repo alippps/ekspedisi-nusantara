@@ -48,6 +48,7 @@ Config.Upgrades = {
 	-- Brightness = terangnya cahaya senter di tier itu.
 	Headlamp = {
 		Name = "Senter Kepala",
+		ShortName = "Senter", -- dipakai di teks pendek, misal syarat gerbang zona
 		Stat = "Jangkauan cahaya",
 		Order = 3,
 		Levels = {
@@ -130,11 +131,26 @@ Config.Level = {
 
 -- Zona gunung. Index = nomor zona (sama dengan folder SpawnPoints/ZoneN, Zones/ZoneN, ZoneGates/GateN).
 -- MinLevel = level pemain minimal buat masuk & ambil item di zona itu.
+-- Upgrades (opsional) = tier upgrade minimal, contoh { Headlamp = 2 } = Senter level 2 (tier 1 = belum punya).
+--   Semua syarat (level + upgrade) harus terpenuhi baru gerbang kebuka & item zona itu bisa diambil.
+-- Teaser (opsional) = sambungan teks banner "Zona baru terbuka!", setelah "N item baru, ".
 -- DarkNight (opsional) = malam di zona ini jauh lebih gelap (Config.Night.Deep).
 Config.Zones = {
 	{ Name = "Kaki Gunung", MinLevel = 1 },
 	{ Name = "Hutan Lumut", MinLevel = 3 },
-	{ Name = "Puncak & Kawah", MinLevel = 4, DarkNight = true },
+	{
+		Name = "Puncak & Kawah",
+		MinLevel = 12,
+		Upgrades = { Headlamp = 2 },
+		Teaser = "termasuk Edelweis dan Kristal Kawah",
+		DarkNight = true,
+	},
+}
+
+-- Panel syarat di depan gerbang zona yang masih terkunci (Workspace > ZoneGates > GateN)
+Config.ZoneGate = {
+	PanelDistance = 18, -- panel muncul kalau pemain sejauh ini (stud) dari gerbang
+	BannerSeconds = 5, -- lama banner "Zona baru terbuka!" tampil
 }
 
 Config.Rarity = {
@@ -177,7 +193,7 @@ Config.Items = {
 	{ Id = "batu_apung", Name = "Batu Apung", Category = "Batuan", Rarity = "Common", Zone = 3, Time = "Any" },
 	{ Id = "arbei_hutan", Name = "Arbei Hutan", Category = "Flora", Rarity = "Uncommon", Zone = 3, Time = "Any" },
 	{ Id = "puyuh_gunung", Name = "Puyuh Gunung", Category = "Fauna", Rarity = "Uncommon", Zone = 3, Time = "Day" },
-	{ Id = "batu_belerang", Name = "Batu Belerang", Category = "Batuan", Rarity = "Uncommon", Zone = 3, Time = "Any" },
+	{ Id = "kristal_kawah", Name = "Kristal Kawah", Category = "Batuan", Rarity = "Uncommon", Zone = 3, Time = "Any" },
 	{ Id = "edelweis_jawa", Name = "Edelweis Jawa", Category = "Flora", Rarity = "Rare", Zone = 3, Time = "Any" },
 	{ Id = "kijang_muncak", Name = "Kijang Muncak", Category = "Fauna", Rarity = "Rare", Zone = 3, Time = "Night" },
 	{ Id = "macan_tutul", Name = "Macan Tutul Jawa", Category = "Fauna", Rarity = "Epic", Zone = 3, Time = "Night" },

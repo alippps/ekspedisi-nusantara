@@ -9,8 +9,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ContextActionService = game:GetService("ContextActionService")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
-local Progression = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Progression"))
 local UIKit = require(script.Parent.UIKit)
+local ZoneController = require(script.Parent.ZoneController)
+local GateController = require(script.Parent.GateController)
 
 local C = UIKit.C
 local RARITY_DEEP = UIKit.RARITY_DEEP
@@ -232,8 +233,8 @@ local function refreshCard(item, count: number?, inBag: boolean)
 			card.hint.TextColor3 = C.accent
 			card.stroke.Color = C.accent
 			card.stroke.Transparency = 0
-		elseif not Progression.isZoneUnlocked(player:GetAttribute("Level") or 1, item.Zone) then
-			card.hint.Text = string.format("Terbuka di Lv %d", Progression.zoneMinLevel(item.Zone))
+		elseif not ZoneController.isUnlocked(item.Zone) then
+			card.hint.Text = "Butuh " .. GateController.missingText(item.Zone)
 			card.hint.TextColor3 = C.inkMuted
 			card.stroke.Color = C.inkMuted
 			card.stroke.Transparency = 0.7

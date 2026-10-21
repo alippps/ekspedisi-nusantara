@@ -1,15 +1,18 @@
--- Zona: deteksi pemain lagi di zona mana (buat pill di HUD) dan gerbang zona yang terkunci level.
+-- Zona: deteksi pemain lagi di zona mana (buat pill di HUD) dan gerbang zona yang terkunci.
+-- Syarat gerbang (level + tier upgrade) dibaca dari Config.Zones lewat Progression.zoneChecks.
 -- Setup di Studio:
 --   Workspace > Zones (Folder) > "Zone1", "Zone2", ... = Part transparan yang nutup area tiap zona
 --     (boleh juga Model/Folder bernama ZoneN berisi beberapa Part kalau bentuk areanya ribet).
 --   Workspace > ZoneGates (Folder) > "Gate2", ... = Part (atau Model) yang nutup jalan masuk zona itu,
 --     Anchored + CanCollide nyala.
--- Gerbang dibuka cuma di client ini (tembus + tak terlihat) saat level cukup. Kunci yang beneran ada di server
+-- Gerbang dibuka cuma di client ini (tembus + tak terlihat) saat semua syarat terpenuhi. Kunci yang beneran ada di server
 -- (BagService nolak ambil item di zona yang belum terbuka).
+-- Dekat gerbang yang masih terkunci (Config.ZoneGate.PanelDistance) = GateController munculin panel syarat.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local Progression = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Progression"))
 
 local player = Players.LocalPlayer
@@ -17,16 +20,21 @@ local player = Players.LocalPlayer
 local ZoneController = {}
 
 local CHECK_INTERVAL = 0.25 -- detik antar cek posisi
-local BLOCKED_COOLDOWN = 3 -- detik antar toast "zona terkunci" waktu nabrak gerbang
 
 local currentZone = 1
+local nearGate: number? = nil -- zona dari gerbang terkunci yang lagi didekati
 local zoneChangedCallbacks: { (number) -> () } = {}
-local gateBlockedCallbacks: { (number) -> () } = {}
+local nearGateCallbacks: { (number?) -> () } = {}
+local unlockedCallbacks: { (number) -> () } = {}
 local gates = {} -- [Instance gerbang] = nomor zona
-local lastBlocked = 0
+local unlocked: { [number]: boolean }? = nil -- status terakhir tiap zona, diisi setelah DataLoaded
 
 local function currentLevel(): number
 	return player:GetAttribute("Level") or 1
+end
+
+local function tierOf(upgradeId: string): number
+	return player:GetAttribute("Upgrade_" .. upgradeId) or 1
 end
 
 -- Part-part milik satu zona/gerbang (dirinya sendiri kalau Part, atau semua Part di dalamnya).
@@ -47,6 +55,18 @@ local function contains(part: BasePart, point: Vector3): boolean
 	local relative = part.CFrame:PointToObjectSpace(point)
 	local half = part.Size / 2
 	return math.abs(relative.X) <= half.X and math.abs(relative.Y) <= half.Y and math.abs(relative.Z) <= half.Z
+end
+
+-- Jarak titik ke permukaan Part (0 kalau di dalam)
+local function distanceTo(part: BasePart, point: Vector3): number
+	local relative = part.CFrame:PointToObjectSpace(point)
+	local half = part.Size / 2
+	local clamped = Vector3.new(
+		math.clamp(relative.X, -half.X, half.X),
+		math.clamp(relative.Y, -half.Y, half.Y),
+		math.clamp(relative.Z, -half.Z, half.Z)
+	)
+	return (relative - clamped).Magnitude
 end
 
 -- ===== Deteksi zona =====
@@ -82,8 +102,12 @@ local function setZone(zone: number)
 end
 
 -- ===== Gerbang =====
+local function isUnlocked(zone: number): boolean
+	return Progression.isZoneUnlocked(zone, currentLevel(), tierOf)
+end
+
 local function applyGate(gate: Instance, zone: number)
-	local open = Progression.isZoneUnlocked(currentLevel(), zone)
+	local open = isUnlocked(zone)
 	for _, part in partsOf(gate) do
 		-- Perubahan ini cuma berlaku di client ini; karakter disimulasikan di client jadi bisa tembus.
 		part.CanCollide = not open
@@ -96,36 +120,32 @@ local function applyGate(gate: Instance, zone: number)
 	end
 end
 
-local function onGateTouched(zone: number, hit: BasePart)
-	local character = player.Character
-	if not character or not hit:IsDescendantOf(character) then
-		return
-	end
-	if Progression.isZoneUnlocked(currentLevel(), zone) then
-		return
-	end
-	local now = os.clock()
-	if now - lastBlocked < BLOCKED_COOLDOWN then
-		return
-	end
-	lastBlocked = now
-	for _, callback in gateBlockedCallbacks do
-		task.spawn(callback, zone)
-	end
-end
-
 local function registerGate(gate: Instance)
 	local zone = tonumber(string.match(gate.Name, "^Gate(%d+)$"))
 	if not zone or gates[gate] then
 		return
 	end
 	gates[gate] = zone
-	for _, part in partsOf(gate) do
-		part.Touched:Connect(function(hit)
-			onGateTouched(zone, hit)
-		end)
-	end
 	applyGate(gate, zone)
+end
+
+-- Zona yang baru kebuka sejak cek terakhir = callback onZoneUnlocked.
+-- Baseline diambil pas DataLoaded, jadi zona yang udah kebuka dari save nggak dianggap baru.
+local function checkUnlocks()
+	if player:GetAttribute("DataLoaded") ~= true then
+		return
+	end
+	local previous = unlocked
+	local now = {}
+	for zone in Config.Zones do
+		now[zone] = isUnlocked(zone)
+		if previous and now[zone] and not previous[zone] then
+			for _, callback in unlockedCallbacks do
+				task.spawn(callback, zone)
+			end
+		end
+	end
+	unlocked = now
 end
 
 local function refreshGates()
@@ -135,6 +155,33 @@ local function refreshGates()
 		else
 			gates[gate] = nil
 		end
+	end
+	checkUnlocks()
+end
+
+-- Gerbang terkunci terdekat dalam jarak panel, atau nil
+local function findNearGate(position: Vector3): number?
+	local best: number?, bestDistance = nil, Config.ZoneGate.PanelDistance
+	for gate, zone in gates do
+		if gate.Parent and not isUnlocked(zone) then
+			for _, part in partsOf(gate) do
+				local distance = distanceTo(part, position)
+				if distance <= bestDistance then
+					best, bestDistance = zone, distance
+				end
+			end
+		end
+	end
+	return best
+end
+
+local function setNearGate(zone: number?)
+	if zone == nearGate then
+		return
+	end
+	nearGate = zone
+	for _, callback in nearGateCallbacks do
+		task.spawn(callback, zone)
 	end
 end
 
@@ -148,9 +195,23 @@ function ZoneController.onZoneChanged(callback: (number) -> ())
 	table.insert(zoneChangedCallbacks, callback)
 end
 
--- callback(zona) waktu pemain nabrak gerbang zona yang belum terbuka.
-function ZoneController.onGateBlocked(callback: (number) -> ())
-	table.insert(gateBlockedCallbacks, callback)
+-- Semua syarat zona + nilai pemain sekarang (buat panel gerbang & teks "terkunci").
+function ZoneController.getChecks(zone: number): { Progression.ZoneCheck }
+	return Progression.zoneChecks(zone, currentLevel(), tierOf)
+end
+
+function ZoneController.isUnlocked(zone: number): boolean
+	return isUnlocked(zone)
+end
+
+-- callback(zona atau nil) waktu pemain mulai/berhenti dekat gerbang zona yang masih terkunci.
+function ZoneController.onNearGate(callback: (number?) -> ())
+	table.insert(nearGateCallbacks, callback)
+end
+
+-- callback(zona) waktu semua syarat zona baru aja terpenuhi (bukan pas join).
+function ZoneController.onZoneUnlocked(callback: (number) -> ())
+	table.insert(unlockedCallbacks, callback)
 end
 
 function ZoneController.start()
@@ -166,6 +227,11 @@ function ZoneController.start()
 		folder.ChildAdded:Connect(registerGate)
 	end)
 	player:GetAttributeChangedSignal("Level"):Connect(refreshGates)
+	for upgradeId in Config.Upgrades do
+		player:GetAttributeChangedSignal("Upgrade_" .. upgradeId):Connect(refreshGates)
+	end
+	player:GetAttributeChangedSignal("DataLoaded"):Connect(checkUnlocks)
+	checkUnlocks()
 
 	task.spawn(function()
 		local isStudio = RunService:IsStudio()
@@ -182,6 +248,7 @@ function ZoneController.start()
 					setZone(zone)
 				end
 			end
+			setNearGate(if hrp and hrp:IsA("BasePart") then findNearGate(hrp.Position) else nil)
 			task.wait(CHECK_INTERVAL)
 		end
 	end)

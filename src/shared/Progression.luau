@@ -1,5 +1,6 @@
 --!strict
--- Rumus progres yang dipakai bareng server & client: level dari XP, dan zona sudah terbuka atau belum.
+-- Rumus progres yang dipakai bareng server & client: level dari XP, dan zona sudah terbuka atau belum
+-- (syarat level + tier upgrade dari Config.Zones).
 -- Angkanya tetap di Config; di sini cuma rumusnya.
 local Config = require(script.Parent.Config)
 
@@ -48,8 +49,47 @@ function Progression.zoneName(zone: number): string
 	return if info then info.Name else ("Zona " .. zone)
 end
 
-function Progression.isZoneUnlocked(level: number, zone: number): boolean
-	return level >= Progression.zoneMinLevel(zone)
+-- Satu syarat buka zona. Kind "Level" atau "Upgrade" (UpgradeId diisi, Need/Have = tier).
+export type ZoneCheck = {
+	Kind: string,
+	UpgradeId: string?,
+	Need: number,
+	Have: number,
+	Met: boolean,
+}
+
+-- Semua syarat zona dari Config.Zones: level dulu, lalu upgrade urut Order-nya.
+-- tierOf(upgradeId) = tier upgrade pemain sekarang (server baca dari data, client dari attribute).
+function Progression.zoneChecks(zone: number, level: number, tierOf: (string) -> number): { ZoneCheck }
+	local minLevel = Progression.zoneMinLevel(zone)
+	local checks: { ZoneCheck } = {
+		{ Kind = "Level", Need = minLevel, Have = level, Met = level >= minLevel },
+	}
+	local info = Config.Zones[zone] :: any
+	local upgrades = if info then info.Upgrades else nil
+	if upgrades then
+		local ids = {}
+		for upgradeId in upgrades do
+			table.insert(ids, upgradeId)
+		end
+		table.sort(ids, function(a, b)
+			return Config.Upgrades[a].Order < Config.Upgrades[b].Order
+		end)
+		for _, upgradeId in ids do
+			local need, have = upgrades[upgradeId], tierOf(upgradeId)
+			table.insert(checks, { Kind = "Upgrade", UpgradeId = upgradeId, Need = need, Have = have, Met = have >= need })
+		end
+	end
+	return checks
+end
+
+function Progression.isZoneUnlocked(zone: number, level: number, tierOf: (string) -> number): boolean
+	for _, check in Progression.zoneChecks(zone, level, tierOf) do
+		if not check.Met then
+			return false
+		end
+	end
+	return true
 end
 
 return Progression

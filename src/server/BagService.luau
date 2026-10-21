@@ -83,7 +83,10 @@ function BagService.tryAdd(player: Player, itemId: string): (boolean, string?)
 		return false, "loading"
 	end
 	-- Kunci zona yang beneran: gerbang di client bisa ditembus exploiter, tapi item tetap tidak bisa diambil.
-	if not Progression.isZoneUnlocked(Progression.levelFromXP(data.XP), item.Zone) then
+	local tierOf = function(upgradeId: string): number
+		return UpgradeService.getTier(player, upgradeId)
+	end
+	if not Progression.isZoneUnlocked(item.Zone, Progression.levelFromXP(data.XP), tierOf) then
 		return false, "locked"
 	end
 	-- Item malam: harus punya senter DAN lagi dinyalain (HeadlampOn cuma diset server)

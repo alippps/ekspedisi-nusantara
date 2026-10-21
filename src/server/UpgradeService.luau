@@ -42,6 +42,11 @@ function UpgradeService.getValue(player: Player, upgradeId: string): number
 	return upgrade.Levels[tierOf(DataService.get(player), upgradeId)].Value
 end
 
+-- Tier upgrade pemain sekarang (1 kalau data belum siap). Dipakai buat syarat buka zona.
+function UpgradeService.getTier(player: Player, upgradeId: string): number
+	return tierOf(DataService.get(player), upgradeId)
+end
+
 -- Coba beli tier berikutnya. Return (berhasil, alasanGagal?, tierBaru?).
 -- Alasan: "invalid" | "loading" | "cooldown" | "max" | "level" | "coins"
 function UpgradeService.buy(player: Player, upgradeId: any): (boolean, string?, number?)
