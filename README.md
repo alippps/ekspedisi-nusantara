@@ -28,6 +28,8 @@ Map gunung dibangun BuildGunung (v4). Yang dibaca kode (nama harus persis):
   (Zone1 di bawah Y 55, Zone2 Y 55-125, Zone3 Y 125 ke atas). Kalau tumpang tindih, nomor zona paling besar yang dipakai.
   CanCollide/CanTouch/CanQuery off. Kalau StreamingEnabled nyala, jadikan Model dengan ModelStreamingMode = Persistent.
 - `Workspace > ZoneGates > Gate2, Gate3`: Model gerbang, boleh miring. Cuma part bernama `Barrier`/`Palang` yang dibuka.
+- Dinding cincin zona (sekarang di `Workspace.Vulkan.DindingZona`): Part ber-Tag `ZoneBarrier` dengan attribute `Zone` (2 atau 3).
+  Tembus & hilang per pemain begitu zonanya terbuka (syarat sama dengan gerbang, dari `Config.Zones`).
 - `SummitTrigger`: Part di puncak (sekarang di `Workspace.Gunung`, dicari di mana aja).
 - `StarterPlayer.CharacterMaxSlopeAngle = 45`: jangan diubah, ini yang bikin pemain nggak bisa manjat tebing.
 

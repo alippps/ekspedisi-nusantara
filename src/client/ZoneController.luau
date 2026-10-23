@@ -7,9 +7,12 @@
 --     Anchored + CanCollide nyala. Kalau Model punya part bernama "Barrier" / "Palang", cuma itu yang dibuka
 --     (tiang/papan gerbang tetap kelihatan); kalau nggak ada, semua part di Model dibuka.
 --     Teks papan "Penanda" di gerbang diatur GateController lewat onGateRefreshed.
--- Gerbang dibuka cuma di client ini (tembus + tak terlihat) saat semua syarat terpenuhi. Kunci yang beneran ada di server
+--   Dinding cincin zona: Part ber-Tag Config.ZoneGate.BarrierTag + attribute Zone (contoh: Workspace.Vulkan.DindingZona).
+--     Zona terbuka = dindingnya Transparency 1, CanCollide & CanQuery mati. Setelan asli disimpan buat nutup lagi.
+-- Gerbang & dinding dibuka cuma di client ini (tembus + tak terlihat) saat semua syarat terpenuhi. Kunci yang beneran ada di server
 -- (BagService nolak ambil item di zona yang belum terbuka).
 -- Dekat gerbang yang masih terkunci (Config.ZoneGate.PanelDistance) = GateController munculin panel syarat.
+local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -30,6 +33,8 @@ local nearGateCallbacks: { (number?) -> () } = {}
 local unlockedCallbacks: { (number) -> () } = {}
 local gateRefreshedCallbacks: { (Instance, number) -> () } = {}
 local gates = {} -- [Instance gerbang] = nomor zona
+type WallOriginal = { Transparency: number, CanCollide: boolean, CanQuery: boolean }
+local walls: { [BasePart]: WallOriginal } = {} -- [Part dinding] = setelan asli dari map
 local unlocked: { [number]: boolean }? = nil -- status terakhir tiap zona, diisi setelah DataLoaded
 
 local function currentLevel(): number
@@ -160,6 +165,44 @@ local function registerGate(gate: Instance)
 	end)
 end
 
+-- ===== Dinding cincin zona =====
+local function applyWall(part: BasePart)
+	local original = walls[part]
+	local zone = part:GetAttribute("Zone")
+	if not original or type(zone) ~= "number" then
+		return
+	end
+	local open = isUnlocked(zone)
+	part.Transparency = if open then 1 else original.Transparency
+	-- CanCollide dulu: Roblox cuma ngizinin CanQuery mati kalau CanCollide udah mati
+	part.CanCollide = if open then false else original.CanCollide
+	part.CanQuery = if open then false else original.CanQuery
+end
+
+local function registerWall(instance: Instance)
+	if not instance:IsA("BasePart") then
+		warn(string.format("[ZoneController] %s di-tag %s tapi bukan Part", instance:GetFullName(), Config.ZoneGate.BarrierTag))
+		return
+	end
+	local zone = instance:GetAttribute("Zone")
+	if type(zone) ~= "number" or not Config.Zones[zone] then
+		warn(string.format("[ZoneController] %s: attribute Zone harus nomor zona 1-%d", instance:GetFullName(), #Config.Zones))
+		return
+	end
+	-- Part yang sama ke-stream ulang: setelan asli udah kesimpan, jangan ketimpa nilai yang lagi dibuka
+	if not walls[instance] then
+		walls[instance] = {
+			Transparency = instance.Transparency,
+			CanCollide = instance.CanCollide,
+			CanQuery = instance.CanQuery,
+		}
+		instance.Destroying:Connect(function()
+			walls[instance] = nil
+		end)
+	end
+	applyWall(instance)
+end
+
 -- Zona yang baru kebuka sejak cek terakhir = callback onZoneUnlocked.
 -- Baseline diambil pas DataLoaded, jadi zona yang udah kebuka dari save nggak dianggap baru.
 local function checkUnlocks()
@@ -186,6 +229,9 @@ local function refreshGates()
 		else
 			gates[gate] = nil
 		end
+	end
+	for part in walls do
+		applyWall(part)
 	end
 	checkUnlocks()
 end
@@ -265,6 +311,13 @@ function ZoneController.start()
 		end
 		folder.ChildAdded:Connect(registerGate)
 	end)
+	-- Dinding cincin: AddedSignal juga jalan pas Part ke-stream masuk (lagi)
+	local wallTag = Config.ZoneGate.BarrierTag
+	CollectionService:GetInstanceAddedSignal(wallTag):Connect(registerWall)
+	for _, instance in CollectionService:GetTagged(wallTag) do
+		registerWall(instance)
+	end
+	-- Level & tier upgrade (termasuk Senter) berubah = gerbang + dinding dicek ulang
 	player:GetAttributeChangedSignal("Level"):Connect(refreshGates)
 	for upgradeId in Config.Upgrades do
 		player:GetAttributeChangedSignal("Upgrade_" .. upgradeId):Connect(refreshGates)

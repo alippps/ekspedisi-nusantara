@@ -162,6 +162,9 @@ Config.Zones = {
 Config.ZoneGate = {
 	PanelDistance = 18, -- panel muncul kalau pemain sejauh ini (stud) dari gerbang
 	BannerSeconds = 3, -- lama banner "Zona baru terbuka!" tampil
+	-- Dinding cincin zona: Part dengan Tag ini (Properties > Tags) + attribute Zone (2, 3, ...).
+	-- Tembus & hilang buat pemain yang zonanya udah terbuka (syarat sama dengan gerbang).
+	BarrierTag = "ZoneBarrier",
 }
 
 -- Misi pemula (panel Misi di bawah stamina)
