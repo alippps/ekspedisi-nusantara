@@ -184,6 +184,7 @@ Config.Sounds = {
 	Teleport = "", -- teleport antar pos
 	Siren = "", -- peringatan event bencana
 	Thunder = "", -- petir menyambar
+	LavaImpact = "", -- bola lava mendarat
 }
 
 -- Event bencana. Cuma satu event jalan, di satu zona. Jeda dihitung sejak event sebelumnya selesai.
@@ -203,7 +204,10 @@ Config.Events = {
 	HitHeight = 12, -- beda tinggi maksimal (stud) pemain dengan titik sambaran yang masih kena
 	-- Pattern = pola serangan di server:
 	--   "strike" = sambaran di titik acak / dekat pemain, ditandai lingkaran Telegraph detik sebelumnya
-	-- Visual = efek di client ("lightning")
+	-- Visual = efek di client ("lightning" | "lava")
+	-- LaunchFrom (opsional) = nama Part di map tempat serangan diluncurkan (dicari di mana aja), misal kawah.
+	--   Nggak ada / nggak ketemu = jatuh dari langit tepat di atas sasaran.
+	-- ShakeScale (opsional) = pengali getar kamera (1 = normal)
 	Types = {
 		petir = {
 			Name = "Badai Petir",
@@ -218,6 +222,22 @@ Config.Events = {
 			AimAtPlayers = 0.5, -- peluang sambaran ngincar dekat pemain (sisanya titik acak di zona)
 			AimSpread = 10, -- titik incaran diacak sejauh ini (stud) dari pemain
 			SurviveCoins = 40, -- bonus buat yang bertahan
+		},
+		erupsi = {
+			Name = "Erupsi",
+			Zones = { 3 },
+			Pattern = "strike",
+			Visual = "lava",
+			CircleColor = Color3.fromRGB(235, 60, 40),
+			LaunchFrom = "SummitTrigger", -- bola lava dilempar dari puncak/kawah
+			ShakeScale = 1.6,
+			StrikeEvery = 1.2,
+			StrikesPerWave = 3,
+			Telegraph = 2, -- lingkaran merah muncul segini detik sebelum bola lava mendarat
+			Radius = 7,
+			AimAtPlayers = 0.5,
+			AimSpread = 12,
+			SurviveCoins = 80,
 		},
 	},
 }

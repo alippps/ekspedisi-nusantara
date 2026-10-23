@@ -354,11 +354,82 @@ local function lightning(position: Vector3)
 	end)
 end
 
-local VISUALS: { [string]: (Vector3) -> () } = {
-	lightning = lightning,
+-- Lava: bola api terbang melengkung dari titik luncur (kawah) dan mendarat tepat saat lingkaran penuh
+local LAVA_COLOR = Color3.fromRGB(255, 110, 30)
+local LAVA_ARC = 40 -- tinggi lengkungan (stud)
+
+local function lavaLaunch(position: Vector3, origin: Vector3?, delay: number)
+	local from = origin or (position + Vector3.new(0, BOLT_HEIGHT, 0))
+	local ball = make("Part", {
+		Name = "BolaLava",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.new(4, 4, 4),
+		Position = from,
+		Material = Enum.Material.Neon,
+		Color = LAVA_COLOR,
+		Anchored = true,
+		CanCollide = false,
+		CanQuery = false,
+		CanTouch = false,
+		CastShadow = false,
+		Parent = fxFolder,
+	})
+	make("Fire", { Size = 6, Heat = 9, Color = LAVA_COLOR, SecondaryColor = Color3.fromRGB(80, 20, 10), Parent = ball })
+	make("PointLight", { Color = LAVA_COLOR, Range = 18, Brightness = 3, Parent = ball })
+	local started = os.clock()
+	local arc = if origin then LAVA_ARC else 0 -- jatuh dari langit = lurus
+	local connection
+	connection = RunService.RenderStepped:Connect(function()
+		local t = if delay > 0 then math.min(1, (os.clock() - started) / delay) else 1
+		ball.Position = from:Lerp(position, t) + Vector3.new(0, arc * 4 * t * (1 - t), 0)
+		if t >= 1 then
+			connection:Disconnect()
+			ball:Destroy()
+		end
+	end)
+end
+
+-- Cipratan lava: pecahan menyebar + cahaya merah sebentar
+local function lavaImpact(position: Vector3)
+	local splash = make("Model", { Name = "CipratanLava", Parent = fxFolder })
+	for _ = 1, 8 do
+		local angle = math.random() * math.pi * 2
+		local piece = make("Part", {
+			Size = Vector3.new(1.2, 1.2, 1.2),
+			Position = position + Vector3.new(0, 1, 0),
+			Material = Enum.Material.Neon,
+			Color = LAVA_COLOR,
+			Anchored = true,
+			CanCollide = false,
+			CanQuery = false,
+			CanTouch = false,
+			CastShadow = false,
+			Parent = splash,
+		})
+		local out = Vector3.new(math.cos(angle), 0, math.sin(angle)) * math.random(4, 8)
+		tween(piece, 0.6, { Position = piece.Position + out + Vector3.new(0, math.random(2, 5), 0), Transparency = 1, Size = Vector3.new(0.3, 0.3, 0.3) })
+	end
+	local glow = flatDisc(position, 10, LAVA_COLOR, 0.2)
+	glow.Parent = splash
+	make("PointLight", { Color = LAVA_COLOR, Range = 30, Brightness = 6, Parent = glow })
+	tween(glow, 1, { Transparency = 1 })
+	local root = rootPosition()
+	if root and (root - position).Magnitude <= THUNDER_DISTANCE then
+		FxController.play("LavaImpact")
+	end
+	task.delay(1.1, function()
+		splash:Destroy()
+	end)
+end
+
+-- launch (opsional) jalan pas lingkaran muncul, impact pas mendarat
+type Visual = { launch: ((Vector3, Vector3?, number) -> ())?, impact: (Vector3) -> () }
+local VISUALS: { [string]: Visual } = {
+	lightning = { impact = lightning },
+	lava = { launch = lavaLaunch, impact = lavaImpact },
 }
 
-local function onStrike(typeId: string, position: Vector3, radius: number, impactAt: number)
+local function onStrike(typeId: string, position: Vector3, radius: number, impactAt: number, origin: Vector3?)
 	local def = E.Types[typeId]
 	local camera = workspace.CurrentCamera
 	if not def or not camera or (camera.CFrame.Position - position).Magnitude > FX_MAX_DISTANCE then
@@ -369,12 +440,15 @@ local function onStrike(typeId: string, position: Vector3, radius: number, impac
 	local outer = flatDisc(position, radius * 2, def.CircleColor, 0.55)
 	local inner = flatDisc(position, 0.5, def.CircleColor, 0.25)
 	tween(inner, delay, { Size = Vector3.new(0.25, radius * 2, radius * 2) }, Enum.EasingStyle.Linear)
+	local visual = VISUALS[def.Visual]
+	if visual and visual.launch then
+		visual.launch(position, origin, delay)
+	end
 	task.delay(delay, function()
 		outer:Destroy()
 		inner:Destroy()
-		local visual = VISUALS[def.Visual]
 		if visual then
-			visual(position)
+			visual.impact(position)
 		end
 	end)
 end
@@ -453,7 +527,9 @@ local function update()
 		setGuiding(false)
 	end
 
-	setShake(if here and danger then SHAKE[phase] else 0)
+	local typeDef = E.Types[state:GetAttribute("Type") or ""]
+	local shakeScale = if typeDef and typeDef.ShakeScale then typeDef.ShakeScale else 1
+	setShake(if here and danger then SHAKE[phase] * shakeScale else 0)
 
 	-- Kartu besar di zona event, pil kecil di zona lain
 	local zoneText = string.format("Zona %d · %s", zone, Progression.zoneName(zone))

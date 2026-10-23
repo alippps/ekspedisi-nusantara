@@ -4,7 +4,8 @@
 --   biar EventController di client bisa nampilin hitung mundur, termasuk buat pemain yang join di tengah event.
 -- * Daftar safe zone dicerminkan ke ReplicatedStorage.SafeZoneList (Zone, CFrame, Size) buat suar & panah di client
 --   (Part safe zone-nya sendiri bisa belum ke-stream di client).
--- * Efek visual ke semua client lewat remote EventFx: ("Strike", typeId, posisiTanah, radius, impactAt server time).
+-- * Efek visual ke semua client lewat remote EventFx:
+--   ("Strike", typeId, posisiTanah, radius, impactAt server time, titikLuncur?) - titikLuncur dari LaunchFrom (misal kawah).
 -- * Kena = pingsan: Notify "Fainted" ke pemain itu, hilang 1 item acak dari tas, muncul di pos terakhir yang ditemukan.
 -- * Bertahan (ada di zona pas bencana mulai & selesai, nggak pingsan) = Koin bonus + Notify "EventSurvived".
 -- Pemain baru bebas event selama Config.Events.NewPlayerGrace detik sejak join (tiap sesi).
@@ -23,6 +24,7 @@ local SummitService = require(script.Parent.SummitService)
 local E = Config.Events
 local PHASE_CHECK = 0.25 -- detik antar cek event masih jalan (buat /event stop)
 local TARGET_TRIES = 6 -- percobaan cari titik sambaran yang bukan safe zone & ada tanahnya
+local LAUNCH_HEIGHT = 10 -- titik luncur sedikit di atas Part LaunchFrom
 
 local EventService = {}
 
@@ -33,6 +35,7 @@ type Run = {
 	fainted: { [Player]: boolean },
 	presentAtStart: { [Player]: boolean },
 	activeUntil: number, -- os.clock() bencana selesai
+	origin: Vector3?, -- titik luncur (Config LaunchFrom), nil = jatuh dari langit
 }
 
 local notify: RemoteEvent
@@ -226,7 +229,7 @@ PATTERNS.strike = function(run: Run)
 		for _ = 1, def.StrikesPerWave do
 			local target = strikeTarget(run)
 			if target then
-				fx:FireAllClients("Strike", run.typeId, target, def.Radius, workspace:GetServerTimeNow() + def.Telegraph)
+				fx:FireAllClients("Strike", run.typeId, target, def.Radius, workspace:GetServerTimeNow() + def.Telegraph, run.origin)
 				task.delay(def.Telegraph, impact, run, target)
 			end
 		end
@@ -268,14 +271,30 @@ local function runEvent(run: Run)
 	stop()
 end
 
+-- Posisi Part LaunchFrom di map (misal SummitTrigger buat kawah), nil kalau nggak diset / nggak ketemu
+local function launchPoint(name: string?): Vector3?
+	if not name then
+		return nil
+	end
+	local found = workspace:FindFirstChild(name, true)
+	local part = found and (if found:IsA("BasePart") then found else found:FindFirstChildWhichIsA("BasePart", true))
+	if not part then
+		warn(string.format("[EventService] LaunchFrom '%s' nggak ada di map, serangan jatuh dari langit", name))
+		return nil
+	end
+	return part.Position + Vector3.new(0, LAUNCH_HEIGHT, 0)
+end
+
 local function start(typeId: string, zone: number)
+	local def = E.Types[typeId]
 	local run: Run = {
 		typeId = typeId,
-		def = E.Types[typeId],
+		def = def,
 		zone = zone,
 		fainted = {},
 		presentAtStart = {},
 		activeUntil = 0,
+		origin = launchPoint(def.LaunchFrom),
 	}
 	current = run
 	task.spawn(runEvent, run)
