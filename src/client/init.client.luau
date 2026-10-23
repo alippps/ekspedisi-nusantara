@@ -8,6 +8,7 @@ require(script.GateController).start()
 require(script.JournalController).start() -- sebelum UIController: tombol Jurnal di HUD manggil ini
 require(script.ShopController).start()
 require(script.SummitController).start()
+require(script.EventController).start() -- sebelum MissionController: panah safe zone ngalahin panah Pos Ranger
 require(script.MissionController).start()
 require(script.UIController).start()
 

@@ -16,6 +16,8 @@
 --   /fly               nyala/matiin terbang (geraknya di DebugController client)
 --   /speed N|reset     kecepatan jalan & terbang (reset = balik normal, lari & capek jalan lagi)
 --   /tp puncak|basecamp|gate2|gate3   teleport cepat (gateN = di depan gerbang, sisi zona bawah)
+--   /event <jenis>|stop  mulai event bencana sekarang di zonamu (jenis = kunci Config.Events.Types, misal petir).
+--                        Masa aman pemain baru kamu dilewati. stop = hentikan event yang lagi jalan.
 -- /stamina, /fly, /speed cuma nyetel attribute Debug*; client juga baru baca attribute itu kalau di Studio.
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
@@ -31,6 +33,7 @@ local UpgradeService = require(script.Parent.UpgradeService)
 local SummitService = require(script.Parent.SummitService)
 local TutorialService = require(script.Parent.TutorialService)
 local RangerService = require(script.Parent.RangerService)
+local EventService = require(script.Parent.EventService)
 
 local D = Config.DayNight
 local MAX_LEVEL = 100
@@ -265,7 +268,7 @@ COMMANDS.tp = function(player, arg)
 	if arg == "puncak" then
 		cframe, problem = summitArrival(character)
 	elseif arg == "basecamp" then
-		cframe = RangerService.debugArrival(1, character)
+		cframe = RangerService.arrivalFor(1, character)
 		problem = "Pos 1 (Basecamp) nggak ada di map"
 	elseif gateZone and Config.Zones[gateZone] and gateZone >= 2 then
 		cframe, problem = gateArrival(gateZone, character)
@@ -277,8 +280,29 @@ COMMANDS.tp = function(player, arg)
 	end
 	humanoid.Sit = false
 	character:PivotTo(cframe)
-	SummitService.debugCancelClimb(player) -- teleport = pendakian batal, sama dengan teleport antar pos
+	SummitService.cancelClimb(player) -- teleport = pendakian batal, sama dengan teleport antar pos
 	return "Teleport ke " .. arg
+end
+
+-- ===== /event =====
+COMMANDS.event = function(player, arg)
+	local names = {}
+	for typeId in Config.Events.Types do
+		table.insert(names, typeId)
+	end
+	table.sort(names)
+	local usage = string.format("Pakai: /event %s|stop", table.concat(names, "|"))
+	if arg == "stop" then
+		return if EventService.debugStop() then "Event dihentikan" else "Nggak ada event yang lagi jalan"
+	end
+	if not arg then
+		return usage
+	end
+	local zone = EventService.debugStart(player, arg)
+	if not zone then
+		return string.format("Event '%s' belum ada. %s", arg, usage)
+	end
+	return string.format("%s dimulai di Zona %d (peringatan %d detik)", Config.Events.Types[arg].Name, zone, Config.Events.WarningSeconds)
 end
 
 local function run(player: Player, text: string)
@@ -327,7 +351,7 @@ function DebugService.start()
 			hook(player)
 		end
 	end
-	print("[Debug] perintah chat aktif (Studio): /zona /jam /level /senter /koin /puncak /misi /pos /stamina /fly /speed /tp")
+	print("[Debug] perintah chat aktif (Studio): /zona /jam /level /senter /koin /puncak /misi /pos /stamina /fly /speed /tp /event")
 end
 
 return DebugService

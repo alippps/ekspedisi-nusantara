@@ -1,5 +1,6 @@
 -- Memunculkan item di titik spawn. Pengambilan divalidasi di server.
 -- Setup di Studio: Workspace > SpawnPoints (Folder) > Zone1 (Folder) > Part-part kecil di tanah.
+-- Selain item biasa (muncul lagi setelah diambil), ada item bonus dari event bencana (spawnBonus) yang hilang sendiri.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
@@ -12,13 +13,20 @@ local SpawnService = {}
 local notify: RemoteEvent
 local itemsFolder: Folder
 local rarityOrder = { "Common", "Uncommon", "Rare", "Epic", "Legendary" }
+local rarityRank = {}
+for i, name in rarityOrder do
+	rarityRank[name] = i
+end
+local pointsByZone: { [number]: { BasePart } } = {}
 
-local function pickItem(zone: number)
+-- Item acak di zona ini (sesuai siang/malam), rarity minimal minRarity kalau diisi.
+local function pickItem(zone: number, minRarity: string?)
 	local isDay = DayNightService.isDay()
+	local minRank = if minRarity then rarityRank[minRarity] or 1 else 1
 	local byRarity = {}
 	for _, item in Config.Items do
 		local timeOk = item.Time == "Any" or (item.Time == "Day" and isDay) or (item.Time == "Night" and not isDay)
-		if item.Zone == zone and timeOk then
+		if item.Zone == zone and timeOk and rarityRank[item.Rarity] >= minRank then
 			byRarity[item.Rarity] = byRarity[item.Rarity] or {}
 			table.insert(byRarity[item.Rarity], item)
 		end
@@ -47,19 +55,8 @@ local function pickItem(zone: number)
 	return nil
 end
 
-local spawnAt
-
-local function scheduleRespawn(point: BasePart, zone: number)
-	task.delay(math.random(S.RespawnMin, S.RespawnMax), spawnAt, point, zone)
-end
-
-spawnAt = function(point: BasePart, zone: number)
-	local item = pickItem(zone)
-	if not item then
-		scheduleRespawn(point, zone)
-		return
-	end
-
+-- Bikin item yang bisa diambil di `position`. onTaken() dipanggil sekali pas berhasil diambil.
+local function createItem(item, position: Vector3, onTaken: (() -> ())?): BasePart
 	local part = Instance.new("Part")
 	part.Name = item.Id
 	part.Shape = Enum.PartType.Ball
@@ -68,7 +65,7 @@ spawnAt = function(point: BasePart, zone: number)
 	part.Color = Config.Rarity[item.Rarity].Color
 	part.Anchored = true
 	part.CanCollide = false
-	part.Position = point.Position + Vector3.new(0, 1.5, 0)
+	part.Position = position
 	part:SetAttribute("ItemId", item.Id)
 
 	local prompt = Instance.new("ProximityPrompt")
@@ -80,7 +77,7 @@ spawnAt = function(point: BasePart, zone: number)
 	prompt.Parent = part
 
 	prompt.Triggered:Connect(function(player: Player)
-		if part:GetAttribute("Taken") then
+		if part:GetAttribute("Taken") or not part.Parent then
 			return
 		end
 		local character = player.Character
@@ -107,10 +104,65 @@ spawnAt = function(point: BasePart, zone: number)
 		part:Destroy()
 		-- firstXP ada = penemuan pertama (udah tercatat di Jurnal + XP-nya udah masuk)
 		notify:FireClient(player, "Collected", item.Id, firstXP)
-		scheduleRespawn(point, zone)
+		if onTaken then
+			onTaken()
+		end
 	end)
 
 	part.Parent = itemsFolder
+	return part
+end
+
+local spawnAt
+
+local function scheduleRespawn(point: BasePart, zone: number)
+	task.delay(math.random(S.RespawnMin, S.RespawnMax), spawnAt, point, zone)
+end
+
+spawnAt = function(point: BasePart, zone: number)
+	local item = pickItem(zone)
+	if not item then
+		scheduleRespawn(point, zone)
+		return
+	end
+	createItem(item, point.Position + Vector3.new(0, 1.5, 0), function()
+		scheduleRespawn(point, zone)
+	end)
+end
+
+-- Item langka bonus (event bencana): `count` item rarity >= minRarity di titik spawn acak zona ini,
+-- hilang sendiri setelah `seconds` kalau belum diambil. Return jumlah yang berhasil dimunculkan.
+function SpawnService.spawnBonus(zone: number, count: number, minRarity: string, seconds: number): number
+	local points = table.clone(pointsByZone[zone] or {})
+	local spawned = 0
+	while spawned < count and #points > 0 do
+		local point = table.remove(points, math.random(1, #points))
+		local item = pickItem(zone, minRarity)
+		if not item then
+			break -- nggak ada item langka yang cocok jam segini
+		end
+		-- Agak di atas & samping titik biasa biar nggak numpuk sama item yang udah ada
+		local offset = Vector3.new(math.random(-20, 20) / 10, 1.5, math.random(-20, 20) / 10)
+		local part = createItem(item, point.Position + offset)
+		part:SetAttribute("Bonus", true)
+		local light = Instance.new("PointLight")
+		light.Color = Config.Rarity[item.Rarity].Color
+		light.Range = 12
+		light.Brightness = 2
+		light.Parent = part
+		task.delay(seconds, function()
+			if part.Parent then
+				part:Destroy()
+			end
+		end)
+		spawned += 1
+	end
+	return spawned
+end
+
+-- Titik spawn zona ini (dipakai EventService buat sasaran acak)
+function SpawnService.getPoints(zone: number): { BasePart }
+	return pointsByZone[zone] or {}
 end
 
 function SpawnService.start()
@@ -128,11 +180,13 @@ function SpawnService.start()
 	for _, zoneFolder in root:GetChildren() do
 		local zone = tonumber(string.match(zoneFolder.Name, "%d+"))
 		if zone then
+			pointsByZone[zone] = pointsByZone[zone] or {}
 			for _, point in zoneFolder:GetChildren() do
 				if point:IsA("BasePart") then
 					point.Anchored = true
 					point.CanCollide = false
 					point.Transparency = 1
+					table.insert(pointsByZone[zone], point)
 					spawnAt(point, zone)
 				end
 			end

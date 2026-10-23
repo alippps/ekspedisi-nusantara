@@ -301,6 +301,30 @@ if anchor then
 	end
 end
 
+-- ===== Safe zone (event bencana) =====
+print("SafeZone")
+local safeByZone = {}
+for _, inst in CollectionService:GetTagged(Config.Events.SafeZoneTag) do
+	local zone = inst:GetAttribute("Zone")
+	if not inst:IsA("BasePart") then
+		err(inst:GetFullName() .. " di-tag " .. Config.Events.SafeZoneTag .. " tapi bukan Part")
+	elseif type(zone) ~= "number" or not Config.Zones[zone] then
+		err(string.format("%s: attribute Zone harus angka 1-%d", inst:GetFullName(), zoneCount))
+	else
+		safeByZone[zone] = (safeByZone[zone] or 0) + 1
+		if inst.CanCollide then
+			warnMsg(inst:GetFullName() .. " masih CanCollide (safe zone harusnya volume tembus)")
+		end
+	end
+end
+for i = 1, zoneCount do
+	if safeByZone[i] then
+		ok(string.format("SafeZone Zona %d: %d part", i, safeByZone[i]))
+	else
+		warnMsg(string.format("Zona %d belum punya SafeZone: pas event di sana nggak ada tempat berlindung", i))
+	end
+end
+
 -- ===== SummitTrigger =====
 print("SummitTrigger")
 local trigger = workspace:FindFirstChild("SummitTrigger", true)

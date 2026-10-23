@@ -19,6 +19,7 @@ local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local Progression = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Progression"))
+local ZoneMath = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ZoneMath"))
 
 local player = Players.LocalPlayer
 
@@ -45,19 +46,7 @@ local function tierOf(upgradeId: string): number
 	return player:GetAttribute("Upgrade_" .. upgradeId) or 1
 end
 
--- Part-part milik satu zona/gerbang (dirinya sendiri kalau Part, atau semua Part di dalamnya).
-local function partsOf(instance: Instance): { BasePart }
-	local parts = {}
-	if instance:IsA("BasePart") then
-		table.insert(parts, instance)
-	end
-	for _, descendant in instance:GetDescendants() do
-		if descendant:IsA("BasePart") then
-			table.insert(parts, descendant)
-		end
-	end
-	return parts
-end
+local partsOf = ZoneMath.partsOf
 
 -- Part yang dibuka pas zona terbuka: penghalang & palangnya
 local BARRIER_NAMES = { Barrier = true, Palang = true }
@@ -73,46 +62,7 @@ local function barriersOf(gate: Instance): { BasePart }
 	return if #barriers > 0 then barriers else partsOf(gate)
 end
 
-local function contains(part: BasePart, point: Vector3): boolean
-	local relative = part.CFrame:PointToObjectSpace(point)
-	local half = part.Size / 2
-	return math.abs(relative.X) <= half.X and math.abs(relative.Y) <= half.Y and math.abs(relative.Z) <= half.Z
-end
-
--- Jarak titik ke permukaan Part (0 kalau di dalam)
-local function distanceTo(part: BasePart, point: Vector3): number
-	local relative = part.CFrame:PointToObjectSpace(point)
-	local half = part.Size / 2
-	local clamped = Vector3.new(
-		math.clamp(relative.X, -half.X, half.X),
-		math.clamp(relative.Y, -half.Y, half.Y),
-		math.clamp(relative.Z, -half.Z, half.Z)
-	)
-	return (relative - clamped).Magnitude
-end
-
 -- ===== Deteksi zona =====
-local function detectZone(position: Vector3): number?
-	local folder = workspace:FindFirstChild("Zones")
-	if not folder then
-		return nil
-	end
-	-- Kalau volume zona tumpang tindih, ambil nomor zona paling tinggi.
-	local found: number? = nil
-	for _, child in folder:GetChildren() do
-		local zone = tonumber(string.match(child.Name, "^Zone(%d+)$"))
-		if zone and (not found or zone > found) then
-			for _, part in partsOf(child) do
-				if contains(part, position) then
-					found = zone
-					break
-				end
-			end
-		end
-	end
-	return found
-end
-
 local function setZone(zone: number)
 	if zone == currentZone then
 		return
@@ -242,7 +192,7 @@ local function findNearGate(position: Vector3): number?
 	for gate, zone in gates do
 		if gate.Parent and not isUnlocked(zone) then
 			for _, part in barriersOf(gate) do
-				local distance = distanceTo(part, position)
+				local distance = ZoneMath.distanceTo(part, position)
 				if distance <= bestDistance then
 					best, bestDistance = zone, distance
 				end
@@ -335,7 +285,7 @@ function ZoneController.start()
 			if type(forced) == "number" then
 				setZone(forced)
 			elseif hrp and hrp:IsA("BasePart") then
-				local zone = detectZone(hrp.Position)
+				local zone = ZoneMath.zoneAt(hrp.Position)
 				if zone then
 					setZone(zone)
 				end

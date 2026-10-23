@@ -342,10 +342,25 @@ function RangerService.debugFind(player: Player, number: number): boolean
 	return true
 end
 
--- Khusus DebugService: titik muncul teleport ke Pos N (sama dengan teleport biasa), nil kalau pos nggak ada.
-function RangerService.debugArrival(number: number, character: Model): CFrame?
+-- Titik muncul di Pos N (sama dengan teleport biasa), nil kalau pos nggak ada. Dipakai /tp & pingsan event.
+function RangerService.arrivalFor(number: number, character: Model): CFrame?
 	local post = posts[number]
 	return if post then arrivalCFrame(post, character) else nil
+end
+
+-- Nomor pos yang paling akhir ditemukan pemain (dan ada di map). Basecamp kalau belum nemu pos lain.
+function RangerService.lastFoundPost(player: Player): number
+	local data = DataService.get(player)
+	local best, bestTime = BASECAMP, -math.huge
+	if data then
+		for key, foundAt in data.FoundPosts do
+			local number = tonumber(key)
+			if number and posts[number] and type(foundAt) == "number" and foundAt > bestTime then
+				best, bestTime = number, foundAt
+			end
+		end
+	end
+	return best
 end
 
 -- Khusus DebugService: lupakan semua pos (kecuali Basecamp).

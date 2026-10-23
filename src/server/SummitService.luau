@@ -9,6 +9,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Progression = require(ReplicatedStorage.Shared.Progression)
+local ZoneMath = require(ReplicatedStorage.Shared.ZoneMath)
 local DataService = require(script.Parent.DataService)
 local BagService = require(script.Parent.BagService)
 local UpgradeService = require(script.Parent.UpgradeService)
@@ -33,18 +34,6 @@ local function rootOf(player: Player): BasePart?
 	local character = player.Character
 	local hrp = character and character:FindFirstChild("HumanoidRootPart")
 	return if hrp and hrp:IsA("BasePart") then hrp else nil
-end
-
--- Jarak titik ke permukaan Part (0 kalau di dalam)
-local function distanceTo(part: BasePart, point: Vector3): number
-	local relative = part.CFrame:PointToObjectSpace(point)
-	local half = part.Size / 2
-	local clamped = Vector3.new(
-		math.clamp(relative.X, -half.X, half.X),
-		math.clamp(relative.Y, -half.Y, half.Y),
-		math.clamp(relative.Z, -half.Z, half.Z)
-	)
-	return (relative - clamped).Magnitude
 end
 
 -- ===== Basecamp =====
@@ -113,7 +102,7 @@ local function tryTouch(player: Player, trigger: BasePart)
 		return
 	end
 	-- Touched bisa dipalsukan exploiter, jadi cek jarak & syarat zona di sini juga
-	if distanceTo(trigger, hrp.Position) > S.TriggerMaxDistance then
+	if ZoneMath.distanceTo(trigger, hrp.Position) > S.TriggerMaxDistance then
 		return
 	end
 	local tierOf = function(upgradeId: string): number
@@ -156,8 +145,8 @@ function SummitService.debugSummit(player: Player)
 	award(player, if start then os.clock() - start else nil)
 end
 
--- Khusus DebugService: /tp = pendakian batal, sama seperti teleport antar pos.
-function SummitService.debugCancelClimb(player: Player)
+-- Pindah tempat di luar jalan kaki (/tp debug, pingsan kena bencana) = pendakian batal, sama seperti teleport antar pos.
+function SummitService.cancelClimb(player: Player)
 	climbStart[player] = nil
 	inBasecamp[player] = false
 end

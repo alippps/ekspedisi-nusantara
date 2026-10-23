@@ -1000,6 +1000,11 @@ function UIController.start()
 				FxController.flyCoins(coinIcon, data.coins)
 			end
 			UIController.toast(string.format("Setor %d item: +%d Koin, +%d XP", data.count, data.coins, data.xp))
+		elseif kind == "EventSurvived" then
+			if data.coins > 0 then
+				FxController.flyCoins(coinIcon, data.coins)
+			end
+			UIController.toast(string.format("Selamat! Kamu bertahan dari %s: +%d Koin", data.event, data.coins))
 		end
 	end)
 end

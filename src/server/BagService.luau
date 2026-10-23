@@ -146,6 +146,28 @@ function BagService.deposit(player: Player)
 	return summary, nil
 end
 
+-- Buang 1 item acak dari tas (Jurnal nggak berubah). Return itemId yang hilang, atau nil kalau tas kosong.
+function BagService.removeRandom(player: Player): string?
+	local data = DataService.get(player)
+	if not data or #data.Bag == 0 then
+		return nil
+	end
+	local itemId = table.remove(data.Bag, math.random(1, #data.Bag))
+	syncAttributes(player, data)
+	return itemId
+end
+
+-- Kasih Koin (bonus event dll.) lewat jalur sinkron yang sama. Return false kalau data belum siap.
+function BagService.addCoins(player: Player, amount: number): boolean
+	local data = DataService.get(player)
+	if not data then
+		return false
+	end
+	data.Coins += amount
+	syncAttributes(player, data)
+	return true
+end
+
 -- Kirim ulang semua angka ke attribute (dipakai DebugService setelah ngubah data langsung).
 function BagService.sync(player: Player)
 	local data = DataService.get(player)

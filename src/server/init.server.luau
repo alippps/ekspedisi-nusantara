@@ -18,6 +18,9 @@ tutorialEvent.Parent = remotes
 local toggleHeadlamp = Instance.new("RemoteEvent")
 toggleHeadlamp.Name = "ToggleHeadlamp"
 toggleHeadlamp.Parent = remotes
+local eventFx = Instance.new("RemoteEvent") -- efek bencana ke semua client (lingkaran, petir)
+eventFx.Name = "EventFx"
+eventFx.Parent = remotes
 remotes.Parent = ReplicatedStorage
 
 require(script.DayNightService).start()
@@ -29,6 +32,7 @@ require(script.RangerService).start()
 require(script.HeadlampService).start()
 require(script.SummitService).start()
 require(script.TutorialService).start()
+require(script.EventService).start()
 
 -- Perintah debug chat cuma di Studio; di server publik modulnya nggak di-require sama sekali.
 if game:GetService("RunService"):IsStudio() then

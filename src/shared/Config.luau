@@ -182,6 +182,44 @@ Config.Sounds = {
 	ZoneUnlocked = "", -- zona baru terbuka
 	PostFound = "", -- Pos Ranger baru ditemukan
 	Teleport = "", -- teleport antar pos
+	Siren = "", -- peringatan event bencana
+	Thunder = "", -- petir menyambar
+}
+
+-- Event bencana. Cuma satu event jalan, di satu zona. Jeda dihitung sejak event sebelumnya selesai.
+-- Setup map: Part safe zone ber-Tag SafeZoneTag + attribute Zone (termasuk di tiap Pos Ranger), CanCollide mati.
+-- Alur: peringatan (WarningSeconds) -> bencana (ActiveSeconds) -> item langka muncul (LootSeconds).
+Config.Events = {
+	IntervalMin = 240, -- jeda antar event (detik)
+	IntervalMax = 360,
+	WarningSeconds = 30,
+	ActiveSeconds = 30,
+	LootSeconds = 60, -- item langka di zona itu hilang sendiri setelah segini
+	LootCount = 4, -- jumlah item langka yang muncul setelah reda
+	LootMinRarity = "Rare", -- rarity terendah item langka
+	NewPlayerGrace = 300, -- detik pertama sejak join (tiap sesi) pemain bebas event
+	SafeZoneTag = "SafeZone",
+	FaintSeconds = 2.5, -- lama layar gelap pas pingsan, lalu muncul di pos terakhir yang ditemukan
+	HitHeight = 12, -- beda tinggi maksimal (stud) pemain dengan titik sambaran yang masih kena
+	-- Pattern = pola serangan di server:
+	--   "strike" = sambaran di titik acak / dekat pemain, ditandai lingkaran Telegraph detik sebelumnya
+	-- Visual = efek di client ("lightning")
+	Types = {
+		petir = {
+			Name = "Badai Petir",
+			Zones = { 1, 2, 3 },
+			Pattern = "strike",
+			Visual = "lightning",
+			CircleColor = Color3.fromRGB(255, 214, 64),
+			StrikeEvery = 1.5, -- detik antar gelombang sambaran
+			StrikesPerWave = 2,
+			Telegraph = 2, -- detik lingkaran muncul sebelum petir menyambar
+			Radius = 8, -- jarak (stud) dari pusat lingkaran yang kena
+			AimAtPlayers = 0.5, -- peluang sambaran ngincar dekat pemain (sisanya titik acak di zona)
+			AimSpread = 10, -- titik incaran diacak sejauh ini (stud) dari pemain
+			SurviveCoins = 40, -- bonus buat yang bertahan
+		},
+	},
 }
 
 -- Puncak gunung. Setup di Studio: Part bernama "SummitTrigger" (boleh di dalam Model/Folder mana aja) di puncak Zona 3.
