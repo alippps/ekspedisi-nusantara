@@ -89,8 +89,7 @@ spawnAt = function(point: BasePart, zone: number)
 			return
 		end
 
-		local isNew = not BagService.isDiscovered(player, item.Id)
-		local ok, reason = BagService.tryAdd(player, item.Id)
+		local ok, reason, firstXP = BagService.tryAdd(player, item.Id)
 		if not ok then
 			if reason == "full" then
 				notify:FireClient(player, "BagFull")
@@ -106,7 +105,8 @@ spawnAt = function(point: BasePart, zone: number)
 
 		part:SetAttribute("Taken", true)
 		part:Destroy()
-		notify:FireClient(player, "Collected", item.Id, isNew)
+		-- firstXP ada = penemuan pertama (udah tercatat di Jurnal + XP-nya udah masuk)
+		notify:FireClient(player, "Collected", item.Id, firstXP)
 		scheduleRespawn(point, zone)
 	end)
 

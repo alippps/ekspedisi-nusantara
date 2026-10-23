@@ -101,6 +101,17 @@ Config.Shop = {
 	BuyCooldown = 0.3, -- jeda minimal antar pembelian (detik), anti spam klik
 }
 
+-- Pos Ranger (setor, toko, teleport). Setup di Studio: Model dengan Tag "PosRanger" (Properties > Tags)
+-- + attribute PosNumber (1, 2, ...) dan Zone, berisi Part "PromptAnchor". Lihat RangerService.
+Config.Posts = {
+	Tag = "PosRanger",
+	DiscoverRadius = 25, -- pos tercatat "ditemukan" pas pemain pertama kali sampai sedekat ini (stud) dari PromptAnchor
+	BannerSeconds = 3, -- lama banner "Pos N ditemukan!" tampil
+	TeleportCost = 0, -- Koin per teleport antar pos (0 = gratis)
+	TeleportCooldown = 10, -- detik minimal antar teleport
+	TeleportOffset = 6, -- kalau Model nggak punya Part "TeleportPoint": muncul sejauh ini (stud) di depan PromptAnchor
+}
+
 Config.Spawn = {
 	RespawnMin = 20, -- detik sebelum item baru muncul di titik yang sama
 	RespawnMax = 45,
@@ -150,7 +161,39 @@ Config.Zones = {
 -- Panel syarat di depan gerbang zona yang masih terkunci (Workspace > ZoneGates > GateN)
 Config.ZoneGate = {
 	PanelDistance = 18, -- panel muncul kalau pemain sejauh ini (stud) dari gerbang
-	BannerSeconds = 5, -- lama banner "Zona baru terbuka!" tampil
+	BannerSeconds = 3, -- lama banner "Zona baru terbuka!" tampil
+}
+
+-- Misi pemula (panel Misi di bawah stamina)
+Config.Tutorial = {
+	PickCount = 3, -- item yang harus diambil di langkah pertama
+	WaypointHideDistance = 14, -- penanda arah ke Pos Ranger hilang kalau udah sedekat ini (stud)
+}
+
+-- Efek suara pendek. Isi pakai "rbxassetid://<ID>" dari Creator Store (Toolbox > Audio). Kosong = diam.
+Config.Sounds = {
+	Volume = 0.5,
+	Collect = "", -- ambil item
+	Deposit = "", -- setor di Pos Ranger
+	LevelUp = "", -- naik level
+	ZoneUnlocked = "", -- zona baru terbuka
+	PostFound = "", -- Pos Ranger baru ditemukan
+	Teleport = "", -- teleport antar pos
+}
+
+-- Puncak gunung. Setup di Studio: Part bernama "SummitTrigger" (boleh di dalam Model/Folder mana aja) di puncak Zona 3.
+-- Satu pendakian = keluar dari Basecamp (area sekitar Pos 1) sampai nyentuh SummitTrigger.
+-- Habis summit, harus balik ke Basecamp dulu baru summit berikutnya dihitung. Teleport antar pos membatalkan pendakian.
+Config.Summit = {
+	Name = "Puncak Watugeni",
+	Elevation = 2900, -- mdpl, cuma buat tampilan
+	Zone = 3, -- zona puncak; summit ditolak kalau zona ini belum terbuka
+	BasecampRadius = 40, -- jarak dari Pos 1 (stud) yang masih dianggap Basecamp
+	TriggerMaxDistance = 20, -- server nolak kalau pemain lebih jauh dari ini dari SummitTrigger
+	FirstTitle = "Penakluk Watugeni", -- title dari summit pertama
+	FirstXP = 200, -- XP summit pertama
+	DailyCoins = 100, -- Koin summit, sekali per hari per pemain
+	DayResetUTCOffset = 7, -- hari ganti jam 00:00 WIB (UTC+7)
 }
 
 Config.Rarity = {

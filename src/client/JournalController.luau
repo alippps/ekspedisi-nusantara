@@ -1,6 +1,7 @@
 -- Jurnal Ekspedisi: daftar semua item di Config.
--- Yang sudah pernah disetor tampil lengkap + jumlah setor; yang belum tampil sebagai siluet "???"
--- dengan petunjuk kapan munculnya. Datanya dari attribute "Journal" & "BagItems" (diisi server).
+-- Item tercatat begitu diambil (server yang nyatet): tampil lengkap + berapa kali diambil. Yang belum ketemu
+-- tampil sebagai siluet "???" dengan petunjuk kapan munculnya. Datanya dari attribute "Journal" (diisi server).
+-- Penemuan baru sejak Jurnal terakhir ditutup ditandai "Baru!" (badge di tombol Jurnal HUD baca newCount).
 -- Buka/tutup: tombol Jurnal di HUD, tombol J (PC), Y (controller). Tutup juga pakai B / tap luar panel.
 -- Kalau nanti item di Config dikasih field Icon = "rbxassetid://...", gambarnya otomatis dipakai
 -- (dan dihitamkan jadi siluet kalau belum ditemukan).
@@ -12,6 +13,7 @@ local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Co
 local UIKit = require(script.Parent.UIKit)
 local ZoneController = require(script.Parent.ZoneController)
 local GateController = require(script.Parent.GateController)
+local FxController = require(script.Parent.FxController)
 
 local C = UIKit.C
 local RARITY_DEEP = UIKit.RARITY_DEEP
@@ -67,6 +69,16 @@ local tabButtons: { [string]: TextButton } = {}
 local cards = {} -- [itemId] = { frame, icon, image?, mark, name, rarityPill, rarity, info, hint, stroke }
 local currentTab = "Semua"
 local isOpen = false
+local grid: ScrollingFrame
+local openedCallbacks: { () -> () } = {}
+local unseen: { [string]: boolean } = {} -- penemuan baru yang belum dilihat di Jurnal (cuma sesi ini)
+local unseenCallbacks: { () -> () } = {}
+
+local function fireUnseenChanged()
+	for _, callback in unseenCallbacks do
+		task.spawn(callback)
+	end
+end
 
 -- ===== Baca data dari attribute =====
 local function readJournal(): { [string]: number }
@@ -76,17 +88,6 @@ local function readJournal(): { [string]: number }
 		local id, count = string.match(entry, "^([^=]+)=(%d+)$")
 		if id then
 			result[id] = tonumber(count) :: number
-		end
-	end
-	return result
-end
-
-local function readBagSet(): { [string]: boolean }
-	local result = {}
-	local raw = player:GetAttribute("BagItems") or ""
-	for _, id in string.split(raw, ",") do
-		if id ~= "" then
-			result[id] = true
 		end
 	end
 	return result
@@ -203,7 +204,7 @@ local function buildCard(item, order: number)
 	return frame
 end
 
-local function refreshCard(item, count: number?, inBag: boolean)
+local function refreshCard(item, count: number?)
 	local card = cards[item.Id]
 	local found = count ~= nil
 	local rarityConfig = Config.Rarity[item.Rarity]
@@ -217,9 +218,15 @@ local function refreshCard(item, count: number?, inBag: boolean)
 		card.name.Text = item.Name
 		card.rarity.Text = item.Rarity
 		card.rarityPill.BackgroundColor3 = RARITY_DEEP[item.Rarity] or C.ink
-		card.hint.Text = string.format("Disetor %dx", count :: number)
-		card.hint.TextColor3 = C.ink
-		card.stroke.Color = rarityConfig and rarityConfig.Color or C.inkMuted
+		if unseen[item.Id] then
+			card.hint.Text = "Baru!"
+			card.hint.TextColor3 = C.accent
+			card.stroke.Color = C.accent
+		else
+			card.hint.Text = string.format("Diambil %dx", count :: number)
+			card.hint.TextColor3 = C.ink
+			card.stroke.Color = rarityConfig and rarityConfig.Color or C.inkMuted
+		end
 		card.stroke.Transparency = 0
 	else
 		card.icon.BackgroundColor3 = SILHOUETTE
@@ -228,12 +235,7 @@ local function refreshCard(item, count: number?, inBag: boolean)
 		card.name.Text = "???"
 		card.rarity.Text = "???"
 		card.rarityPill.BackgroundColor3 = C.inkMuted
-		if inBag then
-			card.hint.Text = "Di tas, setor dulu!"
-			card.hint.TextColor3 = C.accent
-			card.stroke.Color = C.accent
-			card.stroke.Transparency = 0
-		elseif not ZoneController.isUnlocked(item.Zone) then
+		if not ZoneController.isUnlocked(item.Zone) then
 			card.hint.Text = "Butuh " .. GateController.missingText(item.Zone)
 			card.hint.TextColor3 = C.inkMuted
 			card.stroke.Color = C.inkMuted
@@ -264,7 +266,6 @@ local function refresh()
 		return
 	end
 	local journal = readJournal()
-	local bag = readBagSet()
 
 	local total, foundTotal = 0, 0
 	local perCategory: { [string]: { found: number, total: number } } = {}
@@ -274,7 +275,7 @@ local function refresh()
 
 	for _, item in sortedItems do
 		local count = journal[item.Id]
-		refreshCard(item, count, bag[item.Id] == true)
+		refreshCard(item, count)
 		total += 1
 		local bucket = perCategory[item.Category]
 		if bucket then
@@ -399,7 +400,7 @@ local function buildTabs()
 end
 
 local function buildGrid()
-	local grid = make("ScrollingFrame", {
+	grid = make("ScrollingFrame", {
 		Name = "Grid",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
@@ -480,6 +481,10 @@ function JournalController.open()
 	isOpen = true
 	refresh()
 	modal.show()
+	for _, callback in openedCallbacks do
+		task.spawn(callback)
+	end
+	fireUnseenChanged() -- badge di HUD hilang selama Jurnal kebuka
 	-- Tombol B di controller buat nutup, cuma aktif selama jurnal terbuka.
 	ContextActionService:BindAction("CloseJournal", onCloseAction, false, Enum.KeyCode.ButtonB)
 end
@@ -493,6 +498,84 @@ function JournalController.close()
 		modal.hide()
 	end
 	ContextActionService:UnbindAction("CloseJournal")
+	-- Udah dilihat: tanda "Baru!" dihapus
+	table.clear(unseen)
+	fireUnseenChanged()
+end
+
+-- callback() tiap Jurnal dibuka (dipakai misi pemula "Buka Jurnal").
+function JournalController.onOpened(callback: () -> ())
+	table.insert(openedCallbacks, callback)
+end
+
+-- Buka Jurnal di tab Semua, gulir ke kartu pertama di daftar, lalu animasikan kartunya satu-satu.
+-- Dipakai misi pemula pas langkah "Lihat Jurnal".
+function JournalController.celebrate(itemIds: { string })
+	if not modal then
+		return
+	end
+	currentTab = "Semua"
+	if isOpen then
+		refresh()
+	else
+		JournalController.open()
+	end
+	task.wait(0.35) -- tunggu animasi panel masuk & layout selesai
+	local first = itemIds[1] and cards[itemIds[1]]
+	if first then
+		local y = first.frame.AbsolutePosition.Y - grid.AbsolutePosition.Y + grid.CanvasPosition.Y
+		grid.CanvasPosition = Vector2.new(0, math.max(0, y - 8))
+	end
+	for i, itemId in itemIds do
+		local card = cards[itemId]
+		if card then
+			task.delay((i - 1) * 0.15, function()
+				FxController.pulse(card.frame, 1.15)
+				local color = card.stroke.Color
+				card.stroke.Color = C.gold
+				card.stroke.Thickness = 5
+				UIKit.tween(card.stroke, 0.8, { Color = color, Thickness = 2 })
+			end)
+		end
+	end
+end
+
+-- Id item yang udah tercatat di Jurnal, urut sesuai tampilan.
+function JournalController.foundIds(): { string }
+	local journal = readJournal()
+	local ids = {}
+	for _, item in sortedItems do
+		if journal[item.Id] then
+			table.insert(ids, item.Id)
+		end
+	end
+	return ids
+end
+
+-- Dipanggil UIController pas server bilang item ini penemuan pertama.
+function JournalController.markNew(itemId: string)
+	unseen[itemId] = true
+	fireUnseenChanged()
+	if isOpen then
+		refresh()
+	end
+end
+
+-- Jumlah penemuan baru yang belum dilihat di Jurnal (0 selama Jurnal kebuka: lagi dilihat)
+function JournalController.newCount(): number
+	if isOpen then
+		return 0
+	end
+	local count = 0
+	for _ in unseen do
+		count += 1
+	end
+	return count
+end
+
+-- callback() tiap newCount berubah
+function JournalController.onNewChanged(callback: () -> ())
+	table.insert(unseenCallbacks, callback)
 end
 
 function JournalController.toggle()
@@ -513,7 +596,6 @@ function JournalController.start()
 		end
 	end
 	player:GetAttributeChangedSignal("Journal"):Connect(refreshIfOpen)
-	player:GetAttributeChangedSignal("BagItems"):Connect(refreshIfOpen)
 	player:GetAttributeChangedSignal("Level"):Connect(refreshIfOpen)
 	player:GetAttributeChangedSignal("HeadlampRange"):Connect(refreshIfOpen)
 end

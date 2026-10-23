@@ -1,7 +1,7 @@
 -- Gerbang zona (sisi UI):
 -- * Dekat gerbang yang masih terkunci: panel "Gerbang Zona N" berisi checklist syarat dari Config.Zones
 --   (centang hijau = terpenuhi, silang merah + nilai pemain sekarang = belum), plus petunjuk di bawahnya.
--- * Semua syarat baru aja terpenuhi: banner "Zona baru terbuka!".
+-- * Semua syarat baru aja terpenuhi: banner "Zona baru terbuka!" (lewat antrean banner FxController).
 -- Deteksi dekat gerbang & kapan zona kebuka ada di ZoneController; di sini cuma tampilan.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -9,6 +9,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local Progression = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Progression"))
 local ZoneController = require(script.Parent.ZoneController)
+local FxController = require(script.Parent.FxController)
 local UIKit = require(script.Parent.UIKit)
 
 local C = UIKit.C
@@ -36,11 +37,6 @@ local checkList: Frame
 local hintLabel: TextLabel
 local shownZone: number? = nil
 local panelToken = 0
-
-local banner: CanvasGroup
-local bannerZone: TextLabel
-local bannerText: TextLabel
-local bannerToken = 0
 
 -- ===== Teks syarat =====
 local function upgradeName(upgradeId: string): string
@@ -79,6 +75,34 @@ function GateController.missingText(zone: number): string
 	return table.concat(parts, " + ")
 end
 
+-- Teks papan Penanda di gerbang: "Terbuka" atau "Terkunci · butuh Lv 5 (kamu Lv 3)"
+function GateController.signText(zone: number): string
+	if ZoneController.isUnlocked(zone) then
+		return "Terbuka"
+	end
+	local parts = {}
+	for _, check in ZoneController.getChecks(zone) do
+		if not check.Met then
+			if check.Kind == "Upgrade" then
+				local name = upgradeName(check.UpgradeId :: string)
+				table.insert(parts, string.format("%s Lv %d (kamu Lv %d)", name, check.Need, check.Have))
+			else
+				table.insert(parts, string.format("Lv %d (kamu Lv %d)", check.Need, check.Have))
+			end
+		end
+	end
+	return "Terkunci · butuh " .. table.concat(parts, " + ")
+end
+
+-- Papan "Penanda" (BillboardGui) di gerbang punya label "Sub": teksnya diganti per pemain, cuma di client ini.
+local function refreshSign(gate: Instance, zone: number)
+	local sign = gate:FindFirstChild("Penanda", true)
+	local sub = sign and sign:FindFirstChild("Sub", true)
+	if sub and (sub:IsA("TextLabel") or sub:IsA("TextButton")) then
+		sub.Text = GateController.signText(zone)
+	end
+end
+
 -- Petunjuk di bawah panel: upgrade dulu (jelas harus ngapain), kalau tinggal level baru suruh naik level.
 local function hintText(checks: { Progression.ZoneCheck }): string
 	for _, check in checks do
@@ -95,35 +119,6 @@ local function hintText(checks: { Progression.ZoneCheck }): string
 end
 
 -- ===== Bangun UI =====
--- Lingkaran hijau isi centang, atau merah isi silang (digambar pakai Frame, nggak butuh gambar/emoji)
-local function statusIcon(met: boolean): Frame
-	local icon = make("Frame", {
-		Name = "Icon",
-		BackgroundColor3 = met and C.stamina or C.tired,
-		BorderSizePixel = 0,
-		Size = UDim2.fromOffset(ICON_SIZE, ICON_SIZE),
-	}, { make("UICorner", { CornerRadius = UDim.new(1, 0) }) })
-	local function stick(width: number, x: number, y: number, rotation: number)
-		make("Frame", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			BackgroundColor3 = Color3.new(1, 1, 1),
-			BorderSizePixel = 0,
-			Position = UDim2.fromOffset(x, y),
-			Size = UDim2.fromOffset(width, 3),
-			Rotation = rotation,
-			Parent = icon,
-		}, { make("UICorner", { CornerRadius = UDim.new(1, 0) }) })
-	end
-	if met then
-		stick(7, 8, 12.5, 45)
-		stick(12, 13, 10.5, -50)
-	else
-		stick(12, 11, 11, 45)
-		stick(12, 11, 11, -45)
-	end
-	return icon
-end
-
 local function checkRow(check: Progression.ZoneCheck, order: number)
 	local row = make("Frame", {
 		Name = "Check",
@@ -133,7 +128,7 @@ local function checkRow(check: Progression.ZoneCheck, order: number)
 		LayoutOrder = order,
 		Parent = checkList,
 	})
-	local icon = statusIcon(check.Met)
+	local icon = UIKit.statusIcon(check.Met, ICON_SIZE)
 	icon.Position = UDim2.fromOffset(0, 1)
 	icon.Parent = row
 
@@ -246,65 +241,6 @@ local function buildPanel()
 	})
 end
 
-local function buildBanner()
-	banner = make("CanvasGroup", {
-		Name = "ZoneBanner",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.3),
-		Size = UDim2.fromOffset(460, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		BackgroundTransparency = 1,
-		GroupTransparency = 1,
-		Visible = false,
-		Parent = gui,
-	}, { padding(4, 4) })
-	local card = make("Frame", {
-		Name = "Card",
-		BackgroundColor3 = C.panel,
-		BackgroundTransparency = 0.05,
-		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		Parent = banner,
-	}, { corner(18), stroke(C.gold, 3, 0), padding(16, 22) })
-	make("UIListLayout", {
-		Padding = UDim.new(0, 4),
-		HorizontalAlignment = Enum.HorizontalAlignment.Center,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Parent = card,
-	})
-	label({
-		Text = "Zona baru terbuka!",
-		FontFace = FONT_TITLE,
-		TextSize = 30,
-		TextColor3 = C.gold,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		Size = UDim2.new(1, 0, 0, 36),
-		LayoutOrder = 1,
-		Parent = card,
-	})
-	bannerZone = label({
-		Text = "",
-		FontFace = FONT_TITLE,
-		TextSize = 22,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		Size = UDim2.new(1, 0, 0, 28),
-		LayoutOrder = 2,
-		Parent = card,
-	})
-	bannerText = label({
-		Text = "",
-		TextSize = 17,
-		TextColor3 = C.muted,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		TextWrapped = true,
-		Size = UDim2.new(1, 0, 0, 22),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		LayoutOrder = 3,
-		Parent = card,
-	})
-end
-
 -- ===== Panel gerbang =====
 local function fillPanel(zone: number)
 	local checks = ZoneController.getChecks(zone)
@@ -358,26 +294,16 @@ end
 
 function GateController.showUnlocked(zone: number)
 	local info = Config.Zones[zone] :: any
-	bannerZone.Text = string.format("Zona %d · %s", zone, Progression.zoneName(zone))
-	bannerText.Text = if info and info.Teaser
-		then string.format("%d item baru, %s.", itemCount(zone), info.Teaser)
-		else string.format("%d item baru menunggu di sana.", itemCount(zone))
-
-	bannerToken += 1
-	local token = bannerToken
-	banner.Visible = true
-	banner.Position = UDim2.fromScale(0.5, 0.26)
-	tween(banner, 0.35, { GroupTransparency = 0, Position = UDim2.fromScale(0.5, 0.3) }, Enum.EasingStyle.Back)
-	task.delay(Config.ZoneGate.BannerSeconds, function()
-		if token ~= bannerToken then
-			return
-		end
-		local t = tween(banner, 0.4, { GroupTransparency = 1 })
-		t.Completed:Wait()
-		if token == bannerToken then
-			banner.Visible = false
-		end
-	end)
+	FxController.banner({
+		title = "Zona baru terbuka!",
+		subtitle = string.format("Zona %d · %s", zone, Progression.zoneName(zone)),
+		body = if info and info.Teaser
+			then string.format("%d item baru, %s.", itemCount(zone), info.Teaser)
+			else string.format("%d item baru menunggu di sana.", itemCount(zone)),
+		sound = "ZoneUnlocked",
+		confetti = 30,
+		seconds = Config.ZoneGate.BannerSeconds,
+	})
 end
 
 local function updateScale(uiScale: UIScale)
@@ -398,7 +324,6 @@ function GateController.start()
 	})
 	local uiScale = make("UIScale", { Parent = gui })
 	buildPanel()
-	buildBanner()
 	gui.Parent = player:WaitForChild("PlayerGui")
 
 	updateScale(uiScale)
@@ -407,6 +332,7 @@ function GateController.start()
 	end)
 
 	ZoneController.onNearGate(showPanel)
+	ZoneController.onGateRefreshed(refreshSign)
 	ZoneController.onZoneUnlocked(GateController.showUnlocked)
 	player:GetAttributeChangedSignal("Level"):Connect(refreshPanel)
 	for upgradeId in Config.Upgrades do

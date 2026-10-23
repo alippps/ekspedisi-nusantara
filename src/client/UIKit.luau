@@ -104,6 +104,37 @@ local function formatNumber(n: number): string
 	return formatted
 end
 
+-- Lingkaran hijau isi centang, atau merah isi silang (digambar pakai Frame, nggak butuh gambar/emoji).
+-- Dipakai checklist gerbang & panel Misi.
+local function statusIcon(met: boolean, size: number): Frame
+	local icon = make("Frame", {
+		Name = "Icon",
+		BackgroundColor3 = met and C.stamina or C.tired,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(size, size),
+	}, { make("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	local k = size / 22 -- digambar di ukuran 22, lalu diskalakan
+	local function stick(width: number, x: number, y: number, rotation: number)
+		make("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			BorderSizePixel = 0,
+			Position = UDim2.fromOffset(x * k, y * k),
+			Size = UDim2.fromOffset(width * k, math.max(2, 3 * k)),
+			Rotation = rotation,
+			Parent = icon,
+		}, { make("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	end
+	if met then
+		stick(7, 8, 12.5, 45)
+		stick(12, 13, 10.5, -50)
+	else
+		stick(12, 11, 11, 45)
+		stick(12, 11, 11, -45)
+	end
+	return icon
+end
+
 -- ===== Modal (Jurnal, Toko) =====
 -- Panel di tengah layar + latar gelap. Latar sengaja di ScreenGui sendiri tanpa UIScale
 -- dan tanpa inset, supaya selalu nutup satu layar penuh (termasuk topbar dan notch HP).
@@ -214,5 +245,6 @@ return {
 	label = label,
 	tween = tween,
 	formatNumber = formatNumber,
+	statusIcon = statusIcon,
 	createModal = createModal,
 }

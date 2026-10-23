@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 local ContextActionService = game:GetService("ContextActionService")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
@@ -14,6 +15,8 @@ local JournalController = require(script.Parent.JournalController)
 local ZoneController = require(script.Parent.ZoneController)
 local NightController = require(script.Parent.NightController)
 local GateController = require(script.Parent.GateController)
+local FxController = require(script.Parent.FxController)
+local MissionController = require(script.Parent.MissionController)
 local UIKit = require(script.Parent.UIKit)
 
 local C = UIKit.C
@@ -33,6 +36,13 @@ local player = Players.LocalPlayer
 local UIController = {}
 
 local BASE_BAG_SLOTS = Config.Upgrades.Bag.Levels[1].Value
+
+-- Efek popup per rarity (yang nggak ada di sini = tanpa efek)
+local RARITY_FX = {
+	Rare = { shines = 1, confetti = 0 },
+	Epic = { shines = 2, confetti = 16 },
+	Legendary = { shines = 3, confetti = 30, shineColor = Color3.fromRGB(255, 236, 170) },
+}
 
 local itemById = {}
 for _, item in Config.Items do
@@ -79,6 +89,7 @@ local timeLabel: TextLabel
 local sunIcon: Frame
 local moonIcon: Frame
 local coinLabel: TextLabel
+local coinIcon: Frame
 local levelLabel: TextLabel
 local xpFill: Frame
 local xpLabel: TextLabel
@@ -86,6 +97,9 @@ local bagLabel: TextLabel
 local zoneLabel: TextLabel
 local journalLabel: TextLabel
 local journalHint = ""
+local newBadge: Frame
+local newBadgeLabel: TextLabel
+local newBadgeTween: Tween? = nil
 local slotRow: Frame
 local slots: { Frame } = {}
 
@@ -95,6 +109,7 @@ local popupRarity: TextLabel
 local popupName: TextLabel
 local popupMeta: TextLabel
 local popupReward: TextLabel
+local popupHint: TextLabel
 local popupStroke: UIStroke
 local popupToken = 0
 
@@ -102,13 +117,27 @@ local toast: CanvasGroup
 local toastLabel: TextLabel
 local toastToken = 0
 
-local function buildStaminaPanel()
-	local panel = hudPanel({
-		Name = "StaminaPanel",
+-- Kolom kiri atas: panel stamina, lalu panel Misi (MissionController) di bawahnya.
+local function buildLeftColumn(): Frame
+	local column = make("Frame", {
+		Name = "LeftColumn",
 		Position = UDim2.fromOffset(16, 16),
 		Size = UDim2.fromOffset(300, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1,
 		Parent = gui,
+	})
+	make("UIListLayout", { Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = column })
+	return column
+end
+
+local function buildStaminaPanel(parent: Frame)
+	local panel = hudPanel({
+		Name = "StaminaPanel",
+		Size = UDim2.fromOffset(300, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 1,
+		Parent = parent,
 	})
 	padding(14, 16).Parent = panel
 	make("UIListLayout", { Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = panel })
@@ -231,13 +260,41 @@ local function buildJournalButton(parent: Frame)
 	}, { make("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(C.cream, 2, 0.82), padding(0, 18) })
 	-- Di PC kasih petunjuk tombol J; di HP cukup tap.
 	local hint = UserInputService.KeyboardEnabled and "  [J]" or ""
+	make("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		Padding = UDim.new(0, 10),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = button,
+	})
 	journalLabel = label({
 		Text = "Jurnal 0/" .. #Config.Items .. hint,
 		FontFace = FONT_TITLE,
 		TextSize = 18,
 		AutomaticSize = Enum.AutomaticSize.X,
 		Size = UDim2.fromScale(0, 1),
+		LayoutOrder = 1,
 		Parent = button,
+	})
+	-- Penemuan baru yang belum dilihat di Jurnal
+	newBadge = make("Frame", {
+		Name = "NewBadge",
+		Size = UDim2.fromOffset(0, 24),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundColor3 = C.accent,
+		BorderSizePixel = 0,
+		Visible = false,
+		LayoutOrder = 2,
+		Parent = button,
+	}, { make("UICorner", { CornerRadius = UDim.new(1, 0) }), padding(0, 10), make("UIScale", { Name = "Pulse" }) })
+	newBadgeLabel = label({
+		Text = "",
+		FontFace = FONT_BODY_HEAVY,
+		TextSize = 14,
+		TextColor3 = C.ink,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromScale(0, 1),
+		Parent = newBadge,
 	})
 	journalHint = hint
 	button.Activated:Connect(JournalController.toggle)
@@ -255,7 +312,7 @@ local function buildCoinPanel(parent: Frame)
 	make("UIListLayout", { Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = panel })
 
 	local row = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 1, Parent = panel })
-	make("Frame", {
+	coinIcon = make("Frame", {
 		Name = "CoinIcon",
 		BackgroundColor3 = C.gold,
 		BorderSizePixel = 0,
@@ -359,12 +416,20 @@ local function buildPopup()
 		GroupTransparency = 1,
 		Visible = false,
 		Parent = gui,
-	}, { corner(18), padding(10, 16) })
+	}, { corner(18) })
 	popupStroke = stroke(Color3.new(1, 1, 1), 4, 0)
 	popupStroke.Parent = popup
-	make("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder, Parent = popup })
+	-- Isi di frame sendiri: CanvasGroup-nya dipakai buat kilau (FxController.shine) tanpa ikut diatur layout
+	local content = make("Frame", {
+		Name = "Content",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Parent = popup,
+	}, { padding(10, 16) })
+	make("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder, Parent = content })
 
-	local header = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = 1, Parent = popup })
+	local header = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = 1, Parent = content })
 	make("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
 		VerticalAlignment = Enum.VerticalAlignment.Center,
@@ -406,7 +471,7 @@ local function buildPopup()
 		TextColor3 = C.ink,
 		Size = UDim2.new(1, 0, 0, 30),
 		LayoutOrder = 2,
-		Parent = popup,
+		Parent = content,
 	})
 	popupMeta = label({
 		Text = "",
@@ -416,7 +481,7 @@ local function buildPopup()
 		Size = UDim2.new(1, 0, 0, 22),
 		Visible = false,
 		LayoutOrder = 3,
-		Parent = popup,
+		Parent = content,
 	})
 	popupReward = label({
 		Text = "",
@@ -427,7 +492,19 @@ local function buildPopup()
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Size = UDim2.new(1, 0, 0, 22),
 		LayoutOrder = 4,
-		Parent = popup,
+		Parent = content,
+	})
+	popupHint = label({
+		Text = "",
+		FontFace = FONT_BODY_HEAVY,
+		TextSize = 14,
+		TextColor3 = C.accent,
+		TextWrapped = true,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, 18),
+		Visible = false,
+		LayoutOrder = 5,
+		Parent = content,
 	})
 end
 
@@ -458,7 +535,7 @@ end
 -- Tombol Lari & Senter khusus HP. Sengaja di ScreenGui terpisah tanpa UIScale.
 -- Posisi dan muncul/hilangnya ngikut JumpButton bawaan Roblox (TouchGui dari PlayerModule):
 -- kalau PlayerModule pindah ke mode keyboard, tombol lompat hilang, tombol Lari & Senter ikut hilang.
--- Urutan dari kanan: Lompat, Lari, Senter. Senter cuma muncul kalau udah punya. Di PC pakai tombol F.
+-- Urutan dari kanan: Lompat, Lari, Senter. Senter cuma muncul kalau udah punya. Di PC pakai tombol L.
 local runButton: TextButton? = nil
 local headlampButton: TextButton? = nil
 local runGui: ScreenGui? = nil
@@ -483,7 +560,7 @@ local function findJumpButton(): (GuiObject?, ScreenGui?)
 	return jumpButton, touchGui
 end
 
--- Dipakai tombol Senter (HP) dan tombol F (PC).
+-- Dipakai tombol Senter (HP) dan tombol L (PC).
 local function toggleHeadlamp()
 	if not NightController.toggleHeadlamp() then
 		UIController.toast(string.format("Belum punya %s, beli di Pos Ranger", Config.Upgrades.Headlamp.Name))
@@ -630,6 +707,27 @@ local function rebuildSlots()
 	end
 end
 
+-- Badge di tombol Jurnal: muncul & berdenyut selama ada penemuan baru yang belum dilihat di Jurnal
+local function refreshNewBadge()
+	local count = JournalController.newCount()
+	local show = count > 0
+	newBadgeLabel.Text = string.format("+%d baru", count)
+	if show and not newBadge.Visible then
+		local scale = newBadge:FindFirstChild("Pulse") :: UIScale
+		scale.Scale = 1
+		newBadgeTween = TweenService:Create(
+			scale,
+			TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+			{ Scale = 1.1 }
+		)
+		newBadgeTween:Play()
+	elseif not show and newBadgeTween then
+		newBadgeTween:Cancel()
+		newBadgeTween = nil
+	end
+	newBadge.Visible = show
+end
+
 local function refreshBag()
 	local raw = player:GetAttribute("BagItems") or ""
 	local ids = raw == "" and {} or string.split(raw, ",")
@@ -661,6 +759,9 @@ local coinDisplay = Instance.new("NumberValue")
 local function refreshCoins()
 	local coins = player:GetAttribute("Coins") or 0
 	if isDataLoaded() then
+		if coins > coinDisplay.Value then
+			FxController.pulseText(coinLabel)
+		end
 		tween(coinDisplay, 0.6, { Value = coins })
 	else
 		coinDisplay.Value = coins
@@ -682,8 +783,8 @@ local function refreshXP()
 	xpLabel.Text = string.format("%d / %d XP", inLevel, need)
 	tween(xpFill, 0.5, { Size = UDim2.fromScale(inLevel / need, 1) })
 	if level > lastLevel and isDataLoaded() then
-		-- Zona yang kebuka diumumkan banner GateController (syaratnya bisa lebih dari level)
-		UIController.toast("Naik level! Sekarang Lv " .. level)
+		-- Zona yang kebuka diumumkan banner GateController (syaratnya bisa lebih dari level), antre setelah ini
+		FxController.levelUp(level)
 	end
 	lastLevel = level
 end
@@ -749,12 +850,15 @@ function UIController.toast(text: string)
 	end)
 end
 
-function UIController.showItem(itemId: string, isNew: boolean)
+-- firstXP ada = penemuan pertama: udah tercatat di Jurnal & bonus XP-nya udah masuk (server).
+-- Koin + XP biasa baru didapat pas setor, jadi itu yang ditulis di baris bawah.
+function UIController.showItem(itemId: string, firstXP: number?)
 	local item = itemById[itemId]
 	if not item then
 		return
 	end
 	local rarity = Config.Rarity[item.Rarity]
+	local isNew = firstXP ~= nil
 
 	popupToken += 1
 	local token = popupToken
@@ -763,13 +867,35 @@ function UIController.showItem(itemId: string, isNew: boolean)
 	;(popupRarity.Parent :: Frame).BackgroundColor3 = RARITY_DEEP[item.Rarity] or C.ink
 	popupStroke.Color = rarity.Color
 	popupName.Text = item.Name
-	local reward = string.format("%s · +%d Koin · +%d XP", item.Category, rarity.Coin, rarity.XP + (isNew and rarity.FirstXP or 0))
-	popupReward.Text = reward
+	popupReward.Text = if isNew
+		then string.format("Tercatat di Jurnal · +%d XP", firstXP :: number)
+		else string.format("%s · Zona %d", item.Category, item.Zone)
+	popupHint.Text = string.format("Setor ke Pos Ranger: +%d Koin · +%d XP", rarity.Coin, rarity.XP)
+	popupHint.Visible = true
 
 	popup.Visible = true
 	popup.Position = UDim2.new(0.5, 0, 0, 46)
 	popup.GroupTransparency = 1
 	tween(popup, 0.3, { Position = UDim2.new(0.5, 0, 0, 70), GroupTransparency = 0 }, Enum.EasingStyle.Back)
+
+	-- Rare ke atas: kilau lewat di kartu. Epic & Legendary: kartu berdenyut + konfeti warna rarity.
+	FxController.play("Collect")
+	local fx = RARITY_FX[item.Rarity]
+	if fx then
+		task.delay(0.3, function()
+			if token ~= popupToken then
+				return
+			end
+			FxController.shine(popup, fx.shines, fx.shineColor)
+			if fx.confetti > 0 then
+				FxController.pulse(popup, 1.06)
+				local origin = popup.AbsolutePosition + Vector2.new(popup.AbsoluteSize.X / 2, popup.AbsoluteSize.Y)
+				FxController.confetti(origin, fx.confetti, { rarity.Color, RARITY_DEEP[item.Rarity] or C.gold, C.gold, C.cream })
+				popupStroke.Thickness = 8
+				tween(popupStroke, 0.6, { Thickness = 4 })
+			end
+		end)
+	end
 
 	local hold = item.Rarity == "Legendary" and 4 or (item.Rarity == "Epic" and 3 or 1.8)
 	task.delay(hold, function()
@@ -793,7 +919,9 @@ function UIController.start()
 	})
 	local uiScale = make("UIScale", { Parent = gui })
 
-	buildStaminaPanel()
+	local leftColumn = buildLeftColumn()
+	buildStaminaPanel(leftColumn)
+	MissionController.mount(leftColumn, 2)
 	buildZonePill()
 	local rightColumn = buildRightColumn()
 	buildCoinPanel(rightColumn)
@@ -823,13 +951,13 @@ function UIController.start()
 	NightController.onDarkWarning(function()
 		UIController.toast(darkText())
 	end)
-	-- Senter di PC (F) & controller (Y). Tombol HP dibuat di buildRunButton.
+	-- Senter di PC (L) & controller (D-Pad atas). F dipakai prompt Upgrade, Y dipakai Jurnal. Tombol HP dibuat di buildRunButton.
 	ContextActionService:BindAction("ToggleHeadlamp", function(_name, state, _input)
 		if state == Enum.UserInputState.Begin then
 			toggleHeadlamp()
 		end
 		return Enum.ContextActionResult.Sink
-	end, false, Enum.KeyCode.F, Enum.KeyCode.ButtonY)
+	end, false, Enum.KeyCode.L, Enum.KeyCode.DPadUp)
 	coinDisplay.Value = player:GetAttribute("Coins") or 0
 	coinLabel.Text = formatNumber(coinDisplay.Value)
 
@@ -839,14 +967,19 @@ function UIController.start()
 	player:GetAttributeChangedSignal("XP"):Connect(refreshXP)
 	player:GetAttributeChangedSignal("Level"):Connect(refreshXP)
 	player:GetAttributeChangedSignal("JournalCount"):Connect(refreshJournalButton)
+	JournalController.onNewChanged(refreshNewBadge)
 	RunService.RenderStepped:Connect(refreshFrame)
 
 	local notify = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Notify")
 	notify.OnClientEvent:Connect(function(kind: string, data, extra)
 		if kind == "Collected" then
-			UIController.showItem(data, extra == true)
+			local firstXP = if type(extra) == "number" then extra else nil
+			if firstXP then
+				JournalController.markNew(data)
+			end
+			UIController.showItem(data, firstXP)
 		elseif kind == "BagFull" then
-			UIController.toast("Tas penuh! Turun dan setor ke Pos Ranger")
+			UIController.toast("Tas penuh! Setor dulu ke Pos Ranger terdekat")
 		elseif kind == "BagEmpty" then
 			UIController.toast("Tas masih kosong, cari item dulu")
 		elseif kind == "ZoneLocked" then
@@ -862,11 +995,11 @@ function UIController.start()
 		elseif kind == "DataLoading" then
 			UIController.toast("Data kamu masih dimuat, tunggu sebentar ya")
 		elseif kind == "Deposited" then
-			local text = string.format("Setor %d item: +%d Koin, +%d XP", data.count, data.coins, data.xp)
-			if data.newFinds > 0 then
-				text ..= string.format(" · %d penemuan baru", data.newFinds)
+			FxController.play("Deposit")
+			if data.coins > 0 then
+				FxController.flyCoins(coinIcon, data.coins)
 			end
-			UIController.toast(text)
+			UIController.toast(string.format("Setor %d item: +%d Koin, +%d XP", data.count, data.coins, data.xp))
 		end
 	end)
 end

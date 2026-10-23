@@ -1,11 +1,13 @@
 -- Tas, koin, XP, dan jurnal per pemain. Datanya disimpan permanen lewat DataService;
 -- attribute di Player cuma cermin buat HUD (client tidak pernah ngirim data ke sini).
+-- Jurnal & bonus XP penemuan pertama dicatat pas item diambil; setor di Pos Ranger cuma nuker isi tas jadi Koin + XP biasa.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Progression = require(ReplicatedStorage.Shared.Progression)
 local DataService = require(script.Parent.DataService)
 local UpgradeService = require(script.Parent.UpgradeService)
+local TutorialService = require(script.Parent.TutorialService)
 
 local BagService = {}
 
@@ -28,7 +30,7 @@ local function countJournal(journal): number
 	return count
 end
 
--- Jurnal buat client: "itemId=jumlahSetor,itemId=jumlahSetor"
+-- Jurnal buat client: "itemId=jumlahDiambil,itemId=jumlahDiambil"
 local function encodeJournal(journal): string
 	local parts = {}
 	for itemId, count in journal do
@@ -59,23 +61,29 @@ local function setup(player: Player, data)
 	end
 	data.Bag = cleaned
 
+	-- Save lama: item di tas dulu baru masuk Jurnal pas disetor. Catat sekarang + kasih bonus XP-nya.
+	for _, itemId in data.Bag do
+		if not data.Journal[itemId] then
+			data.Journal[itemId] = 1
+			data.XP += Config.Rarity[itemById[itemId].Rarity].FirstXP
+		end
+	end
+
 	syncAttributes(player, data)
 	-- Paling akhir: tanda buat client kalau semua angka di atas sudah data asli.
 	player:SetAttribute("DataLoaded", true)
-end
-
-function BagService.isDiscovered(player: Player, itemId: string): boolean
-	local data = DataService.get(player)
-	return data ~= nil and data.Journal[itemId] ~= nil
 end
 
 function BagService.getItem(itemId: string)
 	return itemById[itemId]
 end
 
-function BagService.tryAdd(player: Player, itemId: string): (boolean, string?)
+-- Masukin item ke tas. Return (berhasil, alasanGagal?, firstXP?).
+-- firstXP diisi kalau ini penemuan pertama: item langsung tercatat di Jurnal & bonus XP-nya langsung masuk.
+function BagService.tryAdd(player: Player, itemId: string): (boolean, string?, number?)
 	local item = itemById[itemId]
-	if not item then
+	local rarity = item and Config.Rarity[item.Rarity]
+	if not item or not rarity then
 		return false, "invalid"
 	end
 	local data = DataService.get(player)
@@ -99,13 +107,19 @@ function BagService.tryAdd(player: Player, itemId: string): (boolean, string?)
 		return false, "full"
 	end
 	table.insert(data.Bag, itemId)
-	player:SetAttribute("BagCount", #data.Bag)
-	player:SetAttribute("BagItems", table.concat(data.Bag, ","))
-	return true, nil
+	local firstXP: number? = nil
+	if not data.Journal[itemId] then
+		firstXP = rarity.FirstXP
+		data.XP += rarity.FirstXP
+	end
+	data.Journal[itemId] = (data.Journal[itemId] or 0) + 1
+	syncAttributes(player, data)
+	TutorialService.onPicked(player, data)
+	return true, nil, firstXP
 end
 
 function BagService.deposit(player: Player)
-	local summary = { count = 0, coins = 0, xp = 0, newFinds = 0 }
+	local summary = { count = 0, coins = 0, xp = 0 }
 	local data = DataService.get(player)
 	if not data then
 		return summary, "loading"
@@ -114,7 +128,6 @@ function BagService.deposit(player: Player)
 		return summary, nil
 	end
 
-	local journal = data.Journal
 	for _, itemId in data.Bag do
 		local item = itemById[itemId]
 		local rarity = item and Config.Rarity[item.Rarity]
@@ -122,11 +135,6 @@ function BagService.deposit(player: Player)
 			summary.count += 1
 			summary.coins += rarity.Coin
 			summary.xp += rarity.XP
-			if not journal[itemId] then
-				summary.xp += rarity.FirstXP
-				summary.newFinds += 1
-			end
-			journal[itemId] = (journal[itemId] or 0) + 1
 		end
 	end
 
@@ -134,6 +142,7 @@ function BagService.deposit(player: Player)
 	data.Coins += summary.coins
 	data.XP += summary.xp
 	syncAttributes(player, data)
+	TutorialService.onDeposited(player, data)
 	return summary, nil
 end
 

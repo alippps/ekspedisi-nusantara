@@ -19,15 +19,19 @@ Jangan ganti nama `PlayerData_v1` di `src/server/DataService.luau` setelah rilis
 https://github.com/MadStudioRoblox/ProfileStore (commit `45c9847`, lisensi Apache-2.0). Jangan diedit langsung.
 
 ## Setup map di Studio
-Semua di Workspace, nama harus persis:
-- `PosRanger`: Part (atau Model berisi Part), tempat Setor dan Upgrade.
-- `SpawnPoints > Zone1, Zone2, ...` (Folder): Part kecil di tanah sebagai titik munculnya item. Otomatis jadi transparan.
-- `Zones > Zone1, Zone2, ...`: Part transparan besar yang menutup area tiap zona, termasuk cukup tinggi di atas tanah
-  (Anchored on; CanCollide, CanTouch, CanQuery, CastShadow off; Transparency 1).
-  Boleh juga Model/Folder bernama `ZoneN` berisi beberapa Part kalau bentuk areanya rumit. Boleh tumpang tindih:
-  nomor zona paling besar yang dipakai. Dipakai buat pill zona di HUD.
-- `ZoneGates > Gate2, ...`: Part (atau Model) yang menutup jalan masuk zona itu (Anchored, CanCollide on).
-  Terbuka otomatis (tembus + hilang) buat pemain yang levelnya cukup. Syarat level ada di `Config.Zones`.
+Map gunung dibangun BuildGunung (v4). Yang dibaca kode (nama harus persis):
+- Pos Ranger: Model ber-Tag `PosRanger` dengan attribute `PosNumber` (1, 2, 3) dan `Zone`, berisi Part `PromptAnchor`
+  (tempat tombol Setor & Menu Pos). Opsional Part `TeleportPoint` = titik muncul pas teleport ke pos itu.
+  Pos 1 = Basecamp. Boleh di mana aja di Workspace.
+- `Workspace > SpawnPoints > Zone1, Zone2, ...` (Folder): Part kecil di tanah sebagai titik munculnya item.
+- `Workspace > Zones > Zone1, Zone2, ...`: kotak transparan per zona, ditumpuk berdasarkan ketinggian
+  (Zone1 di bawah Y 55, Zone2 Y 55-125, Zone3 Y 125 ke atas). Kalau tumpang tindih, nomor zona paling besar yang dipakai.
+  CanCollide/CanTouch/CanQuery off. Kalau StreamingEnabled nyala, jadikan Model dengan ModelStreamingMode = Persistent.
+- `Workspace > ZoneGates > Gate2, Gate3`: Model gerbang, boleh miring. Cuma part bernama `Barrier`/`Palang` yang dibuka.
+- `SummitTrigger`: Part di puncak (sekarang di `Workspace.Gunung`, dicari di mana aja).
+- `StarterPlayer.CharacterMaxSlopeAngle = 45`: jangan diubah, ini yang bikin pemain nggak bisa manjat tebing.
+
+Cek semuanya sekaligus: paste isi `tools/check_map.lua` ke Command Bar (bukan mode Play), lihat Output.
 
 ## Struktur
 - `src/shared` → ReplicatedStorage.Shared (Config, dipakai client dan server)

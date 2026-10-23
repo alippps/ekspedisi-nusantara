@@ -4,7 +4,9 @@
 --   Workspace > Zones (Folder) > "Zone1", "Zone2", ... = Part transparan yang nutup area tiap zona
 --     (boleh juga Model/Folder bernama ZoneN berisi beberapa Part kalau bentuk areanya ribet).
 --   Workspace > ZoneGates (Folder) > "Gate2", ... = Part (atau Model) yang nutup jalan masuk zona itu,
---     Anchored + CanCollide nyala.
+--     Anchored + CanCollide nyala. Kalau Model punya part bernama "Barrier" / "Palang", cuma itu yang dibuka
+--     (tiang/papan gerbang tetap kelihatan); kalau nggak ada, semua part di Model dibuka.
+--     Teks papan "Penanda" di gerbang diatur GateController lewat onGateRefreshed.
 -- Gerbang dibuka cuma di client ini (tembus + tak terlihat) saat semua syarat terpenuhi. Kunci yang beneran ada di server
 -- (BagService nolak ambil item di zona yang belum terbuka).
 -- Dekat gerbang yang masih terkunci (Config.ZoneGate.PanelDistance) = GateController munculin panel syarat.
@@ -26,6 +28,7 @@ local nearGate: number? = nil -- zona dari gerbang terkunci yang lagi didekati
 local zoneChangedCallbacks: { (number) -> () } = {}
 local nearGateCallbacks: { (number?) -> () } = {}
 local unlockedCallbacks: { (number) -> () } = {}
+local gateRefreshedCallbacks: { (Instance, number) -> () } = {}
 local gates = {} -- [Instance gerbang] = nomor zona
 local unlocked: { [number]: boolean }? = nil -- status terakhir tiap zona, diisi setelah DataLoaded
 
@@ -49,6 +52,20 @@ local function partsOf(instance: Instance): { BasePart }
 		end
 	end
 	return parts
+end
+
+-- Part yang dibuka pas zona terbuka: penghalang & palangnya
+local BARRIER_NAMES = { Barrier = true, Palang = true }
+
+-- Part penghalang gerbang: yang bernama Barrier/Palang kalau ada, kalau nggak semua part gerbang.
+local function barriersOf(gate: Instance): { BasePart }
+	local barriers = {}
+	for _, part in partsOf(gate) do
+		if BARRIER_NAMES[part.Name] then
+			table.insert(barriers, part)
+		end
+	end
+	return if #barriers > 0 then barriers else partsOf(gate)
 end
 
 local function contains(part: BasePart, point: Vector3): boolean
@@ -108,25 +125,39 @@ end
 
 local function applyGate(gate: Instance, zone: number)
 	local open = isUnlocked(zone)
-	for _, part in partsOf(gate) do
+	for _, part in barriersOf(gate) do
 		-- Perubahan ini cuma berlaku di client ini; karakter disimulasikan di client jadi bisa tembus.
 		part.CanCollide = not open
 		part.LocalTransparencyModifier = open and 1 or 0
-	end
-	for _, descendant in gate:GetDescendants() do
-		if descendant:IsA("Decal") or descendant:IsA("Texture") then
-			descendant.LocalTransparencyModifier = open and 1 or 0
+		for _, child in part:GetChildren() do
+			if child:IsA("Decal") or child:IsA("Texture") then
+				child.LocalTransparencyModifier = open and 1 or 0
+			end
 		end
+	end
+	for _, callback in gateRefreshedCallbacks do
+		task.spawn(callback, gate, zone)
 	end
 end
 
 local function registerGate(gate: Instance)
 	local zone = tonumber(string.match(gate.Name, "^Gate(%d+)$"))
-	if not zone or gates[gate] then
+	if not zone then
+		return
+	end
+	if gates[gate] then
+		applyGate(gate, zone) -- ke-stream ulang: setelan lokal (CanCollide dll) balik ke asli, pasang lagi
 		return
 	end
 	gates[gate] = zone
 	applyGate(gate, zone)
+	-- StreamingEnabled: part Barrier/Palang bisa nyusul belakangan (atau ke-stream ulang). Tiap ada part baru,
+	-- gerbangnya dipasang ulang biar gerbang yang udah kebuka nggak tiba-tiba nutup lagi.
+	gate.DescendantAdded:Connect(function(descendant)
+		if descendant:IsA("BasePart") and gates[gate] then
+			applyGate(gate, zone)
+		end
+	end)
 end
 
 -- Zona yang baru kebuka sejak cek terakhir = callback onZoneUnlocked.
@@ -164,7 +195,7 @@ local function findNearGate(position: Vector3): number?
 	local best: number?, bestDistance = nil, Config.ZoneGate.PanelDistance
 	for gate, zone in gates do
 		if gate.Parent and not isUnlocked(zone) then
-			for _, part in partsOf(gate) do
+			for _, part in barriersOf(gate) do
 				local distance = distanceTo(part, position)
 				if distance <= bestDistance then
 					best, bestDistance = zone, distance
@@ -207,6 +238,14 @@ end
 -- callback(zona atau nil) waktu pemain mulai/berhenti dekat gerbang zona yang masih terkunci.
 function ZoneController.onNearGate(callback: (number?) -> ())
 	table.insert(nearGateCallbacks, callback)
+end
+
+-- callback(gerbang, zona) tiap gerbang dipasang/diperbarui (level/upgrade berubah). Buat papan Penanda.
+function ZoneController.onGateRefreshed(callback: (Instance, number) -> ())
+	table.insert(gateRefreshedCallbacks, callback)
+	for gate, zone in gates do
+		task.spawn(callback, gate, zone)
+	end
 end
 
 -- callback(zona) waktu semua syarat zona baru aja terpenuhi (bukan pas join).

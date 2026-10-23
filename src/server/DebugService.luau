@@ -9,6 +9,9 @@
 --   /level N           set level (XP di-set ke XP minimal level itu)
 --   /senter N          set tier Senter Kepala (1 = belum punya)
 --   /koin N            set jumlah koin
+--   /puncak [reset]    paksa summit sekarang (reset = hapus title, jumlah summit, bonus harian)
+--   /misi reset        ulang misi pemula dari langkah pertama
+--   /pos N|reset       tandai Pos N ditemukan (reset = lupakan semua pos kecuali Basecamp)
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
@@ -20,6 +23,9 @@ local Progression = require(ReplicatedStorage.Shared.Progression)
 local DataService = require(script.Parent.DataService)
 local BagService = require(script.Parent.BagService)
 local UpgradeService = require(script.Parent.UpgradeService)
+local SummitService = require(script.Parent.SummitService)
+local TutorialService = require(script.Parent.TutorialService)
+local RangerService = require(script.Parent.RangerService)
 
 local D = Config.DayNight
 local MAX_LEVEL = 100
@@ -95,6 +101,44 @@ COMMANDS.senter = function(player, arg)
 	return string.format("Senter di-set ke Tier %d (jangkauan %d)", tier, levels[tier].Value)
 end
 
+COMMANDS.puncak = function(player, arg)
+	if arg == "reset" then
+		if not SummitService.debugReset(player) then
+			return "Data kamu belum siap"
+		end
+		return "Progres summit dihapus (title, jumlah summit, bonus harian)"
+	end
+	SummitService.debugSummit(player)
+	return "Summit dipaksa"
+end
+
+COMMANDS.misi = function(player, arg)
+	if arg ~= "reset" then
+		return "Pakai: /misi reset"
+	end
+	if not TutorialService.debugReset(player) then
+		return "Data kamu belum siap"
+	end
+	return "Misi pemula diulang dari awal"
+end
+
+COMMANDS.pos = function(player, arg)
+	if arg == "reset" then
+		if not RangerService.debugReset(player) then
+			return "Data kamu belum siap"
+		end
+		return "Semua pos dilupakan (Basecamp tetap terbuka)"
+	end
+	local number = parseInt(arg, 1)
+	if not number then
+		return "Pakai: /pos N atau /pos reset"
+	end
+	if not RangerService.debugFind(player, number) then
+		return string.format("Pos %d nggak ada di map (atau data belum siap)", number)
+	end
+	return string.format("Pos %d ditandai ditemukan", number)
+end
+
 COMMANDS.koin = function(player, arg)
 	local coins = parseInt(arg, 0)
 	if not coins then
@@ -155,7 +199,7 @@ function DebugService.start()
 			hook(player)
 		end
 	end
-	print("[Debug] perintah chat aktif (Studio): /zona /jam /level /senter /koin")
+	print("[Debug] perintah chat aktif (Studio): /zona /jam /level /senter /koin /puncak /misi /pos")
 end
 
 return DebugService

@@ -1,6 +1,7 @@
--- Toko upgrade gear di Pos Ranger. Dibuka lewat tombol "Upgrade" di Pos Ranger (server kirim "OpenShop").
--- Client cuma minta "beli X" lewat RemoteFunction BuyUpgrade; harga, koin, dan jarak divalidasi server.
--- Panel nutup sendiri kalau pemain jalan menjauh dari Pos Ranger.
+-- Menu Pos Ranger: toko upgrade gear + teleport ke pos lain yang udah ditemukan.
+-- Dibuka lewat tombol "Menu Pos" di Pos Ranger (server kirim "OpenShop" + nomor pos).
+-- Client cuma minta "beli X" (BuyUpgrade) atau "pindah ke Pos N" (TeleportPost); harga, koin, jarak,
+-- dan pos yang udah ditemukan divalidasi server. Panel nutup sendiri kalau pemain jalan menjauh dari pos.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ContextActionService = game:GetService("ContextActionService")
@@ -9,6 +10,8 @@ local RunService = game:GetService("RunService")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local UIKit = require(script.Parent.UIKit)
 local JournalController = require(script.Parent.JournalController)
+local PostController = require(script.Parent.PostController)
+local FxController = require(script.Parent.FxController)
 
 local C = UIKit.C
 local FONT_TITLE = UIKit.FONT_TITLE
@@ -26,6 +29,7 @@ local ShopController = {}
 
 local HEADER_HEIGHT = 40
 local STATUS_HEIGHT = 20
+local POSTS_HEIGHT = 44
 local SECTION_GAP = 12
 
 local REASON_TEXT = {
@@ -39,6 +43,17 @@ local REASON_TEXT = {
 	error = "Gagal nyambung ke server, coba lagi",
 }
 
+local TELEPORT_TEXT = {
+	locked = "Pos itu belum kamu temukan, jalan ke sana dulu",
+	far = "Kejauhan dari Pos Ranger",
+	here = "Kamu udah di pos ini",
+	cooldown = "Tunggu sebentar sebelum teleport lagi",
+	coins = "Koin kamu belum cukup buat teleport",
+	loading = "Data kamu masih dimuat, tunggu sebentar ya",
+	invalid = "Nggak bisa teleport sekarang",
+	error = "Gagal nyambung ke server, coba lagi",
+}
+
 -- Urutan kartu sesuai Order di Config.
 local sortedUpgrades = {}
 for id, upgrade in Config.Upgrades do
@@ -49,15 +64,19 @@ table.sort(sortedUpgrades, function(a, b)
 end)
 
 local modal: UIKit.Modal? = nil
+local titleLabel: TextLabel
 local coinLabel: TextLabel
 local statusLabel: TextLabel
+local postRow: ScrollingFrame
 local cards = {} -- [upgradeId] = { tier, dots, stat, nextStat, req, button }
 local isOpen = false
 local busy = false
 local statusToken = 0
-local postPart: BasePart? = nil
+local currentPost: number? = nil -- nomor pos tempat menu ini dibuka
+local teleporting = false
 local distanceConnection: RBXScriptConnection? = nil
 local buyRemote: RemoteFunction
+local teleportRemote: RemoteFunction
 
 local function getTier(upgradeId: string): number
 	return player:GetAttribute("Upgrade_" .. upgradeId) or 1
@@ -144,6 +163,75 @@ local function buy(upgradeId: string)
 	refresh()
 end
 
+-- ===== Teleport =====
+local function teleportTo(number: number)
+	if teleporting then
+		return
+	end
+	teleporting = true
+	local ok, success, reason = pcall(function()
+		return teleportRemote:InvokeServer(number)
+	end)
+	teleporting = false
+	if not ok then
+		success, reason = false, "error"
+	end
+	if success then
+		FxController.play("Teleport")
+		ShopController.close()
+	else
+		setStatus(TELEPORT_TEXT[reason] or TELEPORT_TEXT.error, C.danger)
+	end
+end
+
+-- Satu tombol per pos: di sini (redup), belum ditemukan (redup, "???"), atau bisa dituju (oranye).
+local function refreshPosts()
+	if not modal then
+		return
+	end
+	for _, child in postRow:GetChildren() do
+		if child:IsA("GuiButton") then
+			child:Destroy()
+		end
+	end
+	local cost = Config.Posts.TeleportCost
+	for _, post in PostController.list() do
+		local here = post.number == currentPost
+		local found = PostController.isFound(post.number)
+		local text = if here
+			then PostController.title(post) .. " (di sini)"
+			elseif found then PostController.title(post)
+			else string.format("Pos %d · ???", post.number)
+		if found and not here and cost > 0 then
+			text ..= string.format(" · %s Koin", formatNumber(cost))
+		end
+		local available = found and not here
+		local button = make("TextButton", {
+			Name = "Pos" .. post.number,
+			Size = UDim2.fromScale(0, 1),
+			AutomaticSize = Enum.AutomaticSize.X,
+			BackgroundColor3 = if available then C.accent else C.muted,
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			FontFace = FONT_TITLE,
+			Text = text,
+			TextColor3 = if available then C.ink else C.inkMuted,
+			TextSize = 16,
+			LayoutOrder = post.number + 1,
+			Parent = postRow,
+		}, { make("UICorner", { CornerRadius = UDim.new(1, 0) }), padding(0, 16) })
+		button.Activated:Connect(function()
+			if here then
+				setStatus(TELEPORT_TEXT.here, C.inkMuted)
+			elseif not found then
+				setStatus(TELEPORT_TEXT.locked, C.danger)
+			else
+				teleportTo(post.number)
+			end
+		end)
+	end
+end
+
 -- ===== Bangun tampilan =====
 local function buildHeader(panel: Frame)
 	local header = make("Frame", {
@@ -166,8 +254,8 @@ local function buildHeader(panel: Frame)
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = titleGroup,
 	})
-	label({
-		Text = "Upgrade Gear",
+	titleLabel = label({
+		Text = "Pos Ranger",
 		FontFace = FONT_TITLE,
 		TextSize = 26,
 		TextColor3 = C.ink,
@@ -331,7 +419,7 @@ local function build()
 	modal = UIKit.createModal({
 		name = "Shop",
 		displayOrder = 12, -- di atas Jurnal
-		maxSize = Vector2.new(860, 380), -- 3 kartu sejajar
+		maxSize = Vector2.new(860, 440), -- 3 kartu sejajar + baris teleport
 		onBackdrop = function()
 			ShopController.close()
 		end,
@@ -348,7 +436,7 @@ local function build()
 	local row = make("Frame", {
 		Name = "Cards",
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 1, -(HEADER_HEIGHT + STATUS_HEIGHT + SECTION_GAP * 2)),
+		Size = UDim2.new(1, 0, 1, -(HEADER_HEIGHT + POSTS_HEIGHT + STATUS_HEIGHT + SECTION_GAP * 3)),
 		LayoutOrder = 2,
 		Parent = panel,
 	})
@@ -363,25 +451,49 @@ local function build()
 		buildCard(row, entry.id, entry.upgrade, i)
 	end
 
+	-- Baris teleport: label + satu tombol per pos, bisa digeser kalau posnya banyak
+	postRow = make("ScrollingFrame", {
+		Name = "Posts",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, POSTS_HEIGHT),
+		CanvasSize = UDim2.new(),
+		AutomaticCanvasSize = Enum.AutomaticSize.X,
+		ScrollingDirection = Enum.ScrollingDirection.X,
+		ScrollBarThickness = 4,
+		ScrollBarImageColor3 = C.inkMuted,
+		LayoutOrder = 3,
+		Parent = panel,
+	})
+	make("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		Padding = UDim.new(0, 10),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = postRow,
+	})
+	label({
+		Text = "Teleport",
+		FontFace = FONT_TITLE,
+		TextSize = 20,
+		TextColor3 = C.ink,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.new(0, 0, 1, -8),
+		LayoutOrder = 1,
+		Parent = postRow,
+	})
+
 	statusLabel = label({
 		Text = "",
 		FontFace = FONT_BODY_HEAVY,
 		TextSize = 16,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Size = UDim2.new(1, 0, 0, STATUS_HEIGHT),
-		LayoutOrder = 3,
+		LayoutOrder = 4,
 		Parent = panel,
 	})
 
 	modal.mount(player:WaitForChild("PlayerGui"))
-end
-
--- Part Pos Ranger = parent dari tombol "Upgrade" yang dipasang server.
-local function findPostPart(): BasePart?
-	local post = workspace:FindFirstChild("PosRanger")
-	local prompt = post and post:FindFirstChild("UpgradePrompt", true)
-	local part = prompt and prompt.Parent
-	return if part and part:IsA("BasePart") then part else nil
 end
 
 local function onCloseAction(_name: string, state: Enum.UserInputState, _input: InputObject)
@@ -392,24 +504,26 @@ local function onCloseAction(_name: string, state: Enum.UserInputState, _input: 
 end
 
 -- ===== API publik =====
-function ShopController.open()
+function ShopController.open(postNumber: number)
 	if isOpen or not modal then
 		return
 	end
 	JournalController.close()
 	isOpen = true
+	currentPost = postNumber
+	local post = PostController.get(postNumber)
+	titleLabel.Text = if post then PostController.title(post) else "Pos Ranger"
 	statusLabel.Text = ""
 	refresh()
+	refreshPosts()
 	modal.show()
 	ContextActionService:BindAction("CloseShop", onCloseAction, false, Enum.KeyCode.ButtonB)
 
-	-- Jalan menjauh dari Pos Ranger = toko nutup sendiri.
-	postPart = findPostPart()
+	-- Jalan menjauh dari pos = menu nutup sendiri (termasuk habis teleport).
 	distanceConnection = RunService.Heartbeat:Connect(function()
-		local part = postPart
 		local character = player.Character
 		local hrp = character and character:FindFirstChild("HumanoidRootPart")
-		if part and hrp and (hrp.Position - part.Position).Magnitude > Config.Shop.CloseDistance then
+		if post and hrp and (hrp.Position - post.position).Magnitude > Config.Shop.CloseDistance then
 			ShopController.close()
 		end
 	end)
@@ -420,6 +534,7 @@ function ShopController.close()
 		return
 	end
 	isOpen = false
+	currentPost = nil
 	if modal then
 		modal.hide()
 	end
@@ -433,11 +548,17 @@ end
 function ShopController.start()
 	local remotes = ReplicatedStorage:WaitForChild("Remotes")
 	buyRemote = remotes:WaitForChild("BuyUpgrade") :: RemoteFunction
+	teleportRemote = remotes:WaitForChild("TeleportPost") :: RemoteFunction
 	build()
 
-	remotes:WaitForChild("Notify").OnClientEvent:Connect(function(kind: string)
-		if kind == "OpenShop" then
-			ShopController.open()
+	remotes:WaitForChild("Notify").OnClientEvent:Connect(function(kind: string, data)
+		if kind == "OpenShop" and type(data) == "number" then
+			ShopController.open(data)
+		end
+	end)
+	PostController.onChanged(function()
+		if isOpen then
+			refreshPosts()
 		end
 	end)
 

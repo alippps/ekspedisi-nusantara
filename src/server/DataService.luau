@@ -1,4 +1,4 @@
--- Simpan data pemain secara permanen pakai ProfileStore: Koin, XP, jurnal, dan isi tas.
+-- Simpan data pemain secara permanen pakai ProfileStore: Koin, XP, jurnal, isi tas, title, summit, dan pos yang ditemukan.
 -- Level sengaja tidak disimpan: selalu dihitung dari XP, jadi aman kalau kurva level diganti.
 -- Service lain baca/tulis lewat DataService.get(player); ProfileStore yang urus auto-save.
 local Players = game:GetService("Players")
@@ -12,8 +12,13 @@ local STORE_NAME = "PlayerData_v1"
 local TEMPLATE = {
 	Coins = 0,
 	XP = 0,
-	Journal = {}, -- [itemId] = berapa kali item itu sudah disetor
+	Journal = {}, -- [itemId] = berapa kali item itu sudah diambil (tercatat pas diambil, bukan pas disetor)
 	Bag = {}, -- { itemId, ... } isi tas yang belum disetor
+	Titles = {}, -- [nama title] = os.time() pas didapat
+	SummitCount = 0,
+	LastSummitDay = -1, -- nomor hari (lihat SummitService) terakhir dapat Koin harian summit
+	FoundPosts = {}, -- [tostring(PosNumber)] = os.time() pas pertama sampai. Pos 1 selalu dianggap ketemu
+	-- TutorialStep & TutorialPicked sengaja nggak di sini: TutorialService perlu tahu data lama yang belum punya
 	DataVersion = 1, -- naikkan kalau format data berubah dan butuh migrasi
 }
 
