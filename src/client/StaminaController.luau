@@ -11,8 +11,14 @@ local S = Config.Stamina
 
 local player = Players.LocalPlayer
 local BASE_MAX = Config.Upgrades.Stamina.Levels[1].Value
+local IS_STUDIO = RunService:IsStudio()
 
 local StaminaController = {}
+
+-- Attribute dari perintah debug (/stamina, /speed, /fly). Cuma dibaca di Studio, di server publik selalu nil.
+local function debugAttribute(name: string): any
+	return if IS_STUDIO then player:GetAttribute(name) else nil
+end
 
 -- Stamina maks dari upgrade Sepatu Gunung (attribute StaminaMax diisi server).
 local function maxStamina(): number
@@ -54,7 +60,9 @@ local function step(dt: number)
 	local uphill = moving and hrp.AssemblyLinearVelocity.Y > S.UphillMinRise
 	local sprinting = (sprintHeld or touchSprint) and moving and not exhausted
 
-	if climbing then
+	if debugAttribute("DebugFly") == true then
+		stamina += S.RegenIdle * dt -- terbang debug: dianggap diam
+	elseif climbing then
 		stamina -= S.ClimbDrain * dt
 	elseif sprinting then
 		stamina -= S.SprintDrain * dt
@@ -67,6 +75,9 @@ local function step(dt: number)
 	end
 	local max = maxStamina()
 	stamina = math.clamp(stamina, 0, max)
+	if debugAttribute("DebugInfiniteStamina") == true then
+		stamina = max
+	end
 
 	if stamina <= 0 then
 		exhausted = true
@@ -75,7 +86,10 @@ local function step(dt: number)
 		exhausted = false
 	end
 
-	if exhausted then
+	local debugSpeed = debugAttribute("DebugSpeed")
+	if type(debugSpeed) == "number" then
+		hum.WalkSpeed = debugSpeed -- /speed N ngalahin lari & capek
+	elseif exhausted then
 		hum.WalkSpeed = S.TiredSpeed
 	elseif sprinting then
 		hum.WalkSpeed = S.SprintSpeed

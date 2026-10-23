@@ -156,6 +156,12 @@ function SummitService.debugSummit(player: Player)
 	award(player, if start then os.clock() - start else nil)
 end
 
+-- Khusus DebugService: /tp = pendakian batal, sama seperti teleport antar pos.
+function SummitService.debugCancelClimb(player: Player)
+	climbStart[player] = nil
+	inBasecamp[player] = false
+end
+
 -- Khusus DebugService: hapus progres summit biar bisa ngetes summit pertama & bonus harian lagi.
 function SummitService.debugReset(player: Player): boolean
 	local data = DataService.get(player)

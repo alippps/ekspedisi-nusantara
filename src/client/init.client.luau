@@ -10,3 +10,8 @@ require(script.ShopController).start()
 require(script.SummitController).start()
 require(script.MissionController).start()
 require(script.UIController).start()
+
+-- Mode terbang /fly cuma di Studio, sama seperti DebugService di server
+if game:GetService("RunService"):IsStudio() then
+	require(script.DebugController).start()
+end

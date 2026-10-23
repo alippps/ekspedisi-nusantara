@@ -12,6 +12,11 @@
 --   /puncak [reset]    paksa summit sekarang (reset = hapus title, jumlah summit, bonus harian)
 --   /misi reset        ulang misi pemula dari langkah pertama
 --   /pos N|reset       tandai Pos N ditemukan (reset = lupakan semua pos kecuali Basecamp)
+--   /stamina           nyala/matiin stamina tak terbatas
+--   /fly               nyala/matiin terbang (geraknya di DebugController client)
+--   /speed N|reset     kecepatan jalan & terbang (reset = balik normal, lari & capek jalan lagi)
+--   /tp puncak|basecamp|gate2|gate3   teleport cepat (gateN = di depan gerbang, sisi zona bawah)
+-- /stamina, /fly, /speed cuma nyetel attribute Debug*; client juga baru baca attribute itu kalau di Studio.
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
@@ -29,6 +34,9 @@ local RangerService = require(script.Parent.RangerService)
 
 local D = Config.DayNight
 local MAX_LEVEL = 100
+local MAX_SPEED = 500
+local ARRIVAL_HEIGHT = 3.5 -- tinggi HumanoidRootPart dari tanah habis /tp (sama dengan RangerService)
+local GATE_TP_OFFSET = 8 -- /tp gateN: muncul sejauh ini (stud) di depan gerbang
 
 local DebugService = {}
 
@@ -153,6 +161,126 @@ COMMANDS.koin = function(player, arg)
 	return string.format("Koin di-set ke %d", coins)
 end
 
+-- Attribute boolean nyala/mati. Mati = dihapus (nil), biar sama dengan pemain yang nggak pernah pakai debug.
+local function toggle(player: Player, attribute: string): boolean
+	local on = player:GetAttribute(attribute) ~= true
+	player:SetAttribute(attribute, if on then true else nil)
+	return on
+end
+
+COMMANDS.stamina = function(player)
+	return if toggle(player, "DebugInfiniteStamina") then "Stamina tak terbatas: NYALA" else "Stamina tak terbatas: mati"
+end
+
+COMMANDS.fly = function(player)
+	if toggle(player, "DebugFly") then
+		return "Terbang: NYALA (PC: WASD, Space naik, Ctrl turun · HP: joystick + arah kamera)"
+	end
+	return "Terbang: mati"
+end
+
+COMMANDS.speed = function(player, arg)
+	if arg == "reset" then
+		player:SetAttribute("DebugSpeed", nil)
+		return string.format("Kecepatan balik normal (jalan %d, lari %d)", Config.Stamina.WalkSpeed, Config.Stamina.SprintSpeed)
+	end
+	local speed = parseInt(arg, 1)
+	if not speed or speed > MAX_SPEED then
+		return string.format("Pakai: /speed 1-%d atau /speed reset (normal = %d)", MAX_SPEED, Config.Stamina.WalkSpeed)
+	end
+	player:SetAttribute("DebugSpeed", speed)
+	return string.format("Kecepatan jalan & terbang di-set ke %d", speed)
+end
+
+-- ===== /tp =====
+-- Titik tanah di bawah `position`, nil kalau nggak ada tanah sampai 100 stud ke bawah
+local function groundBelow(position: Vector3, character: Model): Vector3?
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { character }
+	params.RespectCanCollide = true -- kotak zona & trigger (CanCollide mati) ditembus
+	local hit = workspace:Raycast(position + Vector3.new(0, 10, 0), Vector3.new(0, -110, 0), params)
+	return hit and hit.Position
+end
+
+-- Berdiri di `ground`, hadap ke `target` (cuma arah datar)
+local function standAt(ground: Vector3, target: Vector3): CFrame
+	local position = ground + Vector3.new(0, ARRIVAL_HEIGHT, 0)
+	local facing = Vector3.new(target.X, position.Y, target.Z)
+	if (facing - position).Magnitude < 0.1 then
+		return CFrame.new(position)
+	end
+	return CFrame.lookAt(position, facing)
+end
+
+local function summitArrival(character: Model): (CFrame?, string?)
+	local trigger = workspace:FindFirstChild("SummitTrigger", true)
+	local part = trigger and (if trigger:IsA("BasePart") then trigger else trigger:FindFirstChildWhichIsA("BasePart", true))
+	if not part then
+		return nil, "SummitTrigger nggak ada di map"
+	end
+	local ground = groundBelow(part.Position, character) or part.Position
+	return standAt(ground, part.Position)
+end
+
+-- Di depan gerbang ZoneGates/GateN, di sisi yang tanahnya lebih rendah (zona bawah, gerbangnya masih di depan mata)
+local function gateArrival(zone: number, character: Model): (CFrame?, string?)
+	local folder = workspace:FindFirstChild("ZoneGates")
+	local gate = folder and folder:FindFirstChild("Gate" .. zone)
+	if not gate then
+		return nil, string.format("ZoneGates/Gate%d nggak ada di map", zone)
+	end
+	local center: CFrame, size: Vector3
+	if gate:IsA("Model") then
+		center, size = gate:GetBoundingBox()
+	elseif gate:IsA("BasePart") then
+		center, size = gate.CFrame, gate.Size
+	else
+		return nil, string.format("ZoneGates/Gate%d harus Model atau Part", zone)
+	end
+	-- Sumbu paling tipis (X atau Z lokal) = arah orang lewat gerbang
+	local through = if size.X < size.Z then center.RightVector else center.LookVector
+	local offset = math.min(size.X, size.Z) / 2 + GATE_TP_OFFSET
+	local best: Vector3? = nil
+	for _, side in { 1, -1 } do
+		local ground = groundBelow(center.Position + through * side * offset, character)
+		if ground and (not best or ground.Y < best.Y) then
+			best = ground
+		end
+	end
+	if not best then
+		return nil, string.format("Nggak nemu tanah di depan Gate%d", zone)
+	end
+	return standAt(best, center.Position)
+end
+
+COMMANDS.tp = function(player, arg)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not character or not humanoid or humanoid.Health <= 0 then
+		return "Karakter kamu belum ada"
+	end
+	local gateZone = tonumber(string.match(arg or "", "^gate(%d+)$"))
+	local cframe: CFrame?, problem: string?
+	if arg == "puncak" then
+		cframe, problem = summitArrival(character)
+	elseif arg == "basecamp" then
+		cframe = RangerService.debugArrival(1, character)
+		problem = "Pos 1 (Basecamp) nggak ada di map"
+	elseif gateZone and Config.Zones[gateZone] and gateZone >= 2 then
+		cframe, problem = gateArrival(gateZone, character)
+	else
+		return string.format("Pakai: /tp puncak | basecamp | gate2-%d", #Config.Zones)
+	end
+	if not cframe then
+		return problem or "Gagal teleport"
+	end
+	humanoid.Sit = false
+	character:PivotTo(cframe)
+	SummitService.debugCancelClimb(player) -- teleport = pendakian batal, sama dengan teleport antar pos
+	return "Teleport ke " .. arg
+end
+
 local function run(player: Player, text: string)
 	local name, arg = string.match(string.lower(text), "^/(%S+)%s*(%S*)")
 	local command = name and COMMANDS[name]
@@ -199,7 +327,7 @@ function DebugService.start()
 			hook(player)
 		end
 	end
-	print("[Debug] perintah chat aktif (Studio): /zona /jam /level /senter /koin /puncak /misi /pos")
+	print("[Debug] perintah chat aktif (Studio): /zona /jam /level /senter /koin /puncak /misi /pos /stamina /fly /speed /tp")
 end
 
 return DebugService
